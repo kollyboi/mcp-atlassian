@@ -609,3 +609,31 @@ def test_markdown_to_jira_bold_without_space_still_converts(preprocessor_with_ji
     # These should still be converted (existing behavior preserved)
     assert preprocessor_with_jira.markdown_to_jira("**bold text**") == "*bold text*"
     assert preprocessor_with_jira.markdown_to_jira("*italic text*") == "_italic text_"
+
+
+@pytest.mark.parametrize(
+    ("base_url", "domain", "base_path"),
+    [
+        ("https://example.atlassian.net/wiki", "example.atlassian.net", "/wiki/"),
+        ("https://example.atlassian.net", "example.atlassian.net", "/"),
+        ("https://conf.corp.no/confluence/", "conf.corp.no", "/confluence/"),
+    ],
+)
+def test_confluence_site_metadata_from_base_url(base_url, domain, base_path):
+    """Site metadata is derived from the configured URL, without a space key."""
+    metadata = ConfluencePreprocessor(base_url=base_url)._site_metadata()
+
+    assert metadata.domain == domain
+    assert metadata.base_path == base_path
+    assert metadata.space_key is None
+
+
+def test_markdown_to_confluence_does_not_use_fallback(caplog):
+    """The md2conf converter must run, not the plain <p> wrapper fallback."""
+    preprocessor = ConfluencePreprocessor(base_url="https://example.atlassian.net/wiki")
+
+    with caplog.at_level("ERROR", logger="mcp-atlassian"):
+        result = preprocessor.markdown_to_confluence_storage("# Title\n\nSome **bold**")
+
+    assert "Error converting markdown" not in caplog.text
+    assert result == "<h1>Title</h1><p>Some <strong>bold</strong></p>"

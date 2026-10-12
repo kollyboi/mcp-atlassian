@@ -4,6 +4,7 @@ import logging
 import shutil
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 from md2conf.converter import (
     ConfluenceConverterOptions,
@@ -11,6 +12,7 @@ from md2conf.converter import (
     elements_to_string,
     markdown_to_html,
 )
+from md2conf.metadata import ConfluenceSiteMetadata
 
 # Handle md2conf API changes: elements_from_string may be renamed to elements_from_strings
 try:
@@ -34,6 +36,21 @@ class ConfluencePreprocessor(BasePreprocessor):
             base_url: Base URL for Confluence API
         """
         super().__init__(base_url=base_url)
+
+    def _site_metadata(self) -> ConfluenceSiteMetadata:
+        """Build the site metadata md2conf needs to resolve links.
+
+        Only the domain and base path are derived from the configured URL.
+        No space key is set, because the converter is used on a single
+        document without any cross-page references.
+        """
+        parsed = urlparse(self.base_url)
+        base_path = parsed.path.rstrip("/")
+        return ConfluenceSiteMetadata(
+            domain=parsed.netloc,
+            base_path=f"{base_path}/" if base_path else "/",
+            space_key=None,
+        )
 
     def markdown_to_confluence_storage(
         self, markdown_content: str, *, enable_heading_anchors: bool = False
@@ -71,6 +88,7 @@ class ConfluencePreprocessor(BasePreprocessor):
                     options=options,
                     path=Path(temp_dir) / "temp.md",
                     root_dir=Path(temp_dir),
+                    site_metadata=self._site_metadata(),
                     page_metadata={},
                 )
 
