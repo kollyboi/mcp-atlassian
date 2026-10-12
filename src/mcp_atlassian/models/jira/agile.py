@@ -28,7 +28,7 @@ class JiraBoard(ApiModel):
     type: str = UNKNOWN
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraBoard":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraBoard:
         """
         Create a JiraBoard from a Jira API response.
 
@@ -87,7 +87,7 @@ class JiraSprint(ApiModel):
     auto_start_stop: bool = False
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraSprint":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraSprint:
         """
         Create a JiraSprint from a Jira API response.
 

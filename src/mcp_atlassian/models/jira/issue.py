@@ -241,7 +241,7 @@ class JiraIssue(ApiModel, TimestampMixin):
         return None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraIssue":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraIssue:
         """
         Create a JiraIssue from a Jira API response.
 

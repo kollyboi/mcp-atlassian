@@ -1,7 +1,7 @@
 """Utility functions for date operations."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import dateutil.parser
 
@@ -27,5 +27,5 @@ def parse_date(date_str: str | int | None) -> datetime | None:
     if not date_str:
         return None
     if isinstance(date_str, int) or date_str.isdigit():
-        return datetime.fromtimestamp(int(date_str) / 1000, tz=timezone.utc)
+        return datetime.fromtimestamp(int(date_str) / 1000, tz=UTC)
     return dateutil.parser.parse(date_str)

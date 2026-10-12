@@ -35,7 +35,7 @@ class JiraWorklog(ApiModel, TimestampMixin):
     time_spent_seconds: int = 0
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraWorklog":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraWorklog:
         """
         Create a JiraWorklog from a Jira API response.
 

@@ -70,7 +70,7 @@ class ConfluenceConfig:
         return self.ssl_verify
 
     @classmethod
-    def from_env(cls) -> "ConfluenceConfig":
+    def from_env(cls) -> ConfluenceConfig:
         """Create configuration from environment variables.
 
         Returns:

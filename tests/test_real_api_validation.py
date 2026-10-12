@@ -188,7 +188,7 @@ def test_board_id() -> str:
 
 
 @pytest.fixture
-def resource_tracker() -> Generator[ResourceTracker, None, None]:
+def resource_tracker() -> Generator[ResourceTracker, None, None]:  # noqa: UP043
     """Create and yield a ResourceTracker that will be used to clean up after tests."""
     tracker = ResourceTracker()
     yield tracker
@@ -715,7 +715,7 @@ async def test_confluence_create_page(
     test_id = str(uuid.uuid4())[:8]
     title = f"Test Page (API Validation) {test_id}"
 
-    timestamp = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+    timestamp = datetime.datetime.now(tz=datetime.UTC).isoformat()
     content = f"""
     <h1>Test Page</h1>
     <p>This is a test page created by the API validation tests at {timestamp}.</p>
@@ -778,7 +778,7 @@ async def test_confluence_update_page(
         page_id = page.id
         resource_tracker.add_confluence_page(page_id)
 
-        now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+        now = datetime.datetime.now(tz=datetime.UTC).isoformat()
         updated_content = f"<p>Updated content {test_id} at {now}</p>"
 
         updated_page = confluence_client.update_page(

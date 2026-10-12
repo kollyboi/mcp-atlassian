@@ -43,7 +43,7 @@ class ConfluenceUser(ApiModel):
         return self.display_name
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "ConfluenceUser":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> ConfluenceUser:
         """
         Create a ConfluenceUser from a Confluence API response.
 
@@ -94,7 +94,7 @@ class ConfluenceAttachment(ApiModel):
     @classmethod
     def from_api_response(
         cls, data: dict[str, Any], **kwargs: Any
-    ) -> "ConfluenceAttachment":
+    ) -> ConfluenceAttachment:
         """
         Create a ConfluenceAttachment from a Confluence API response.
 

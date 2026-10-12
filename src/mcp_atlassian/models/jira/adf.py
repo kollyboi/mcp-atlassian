@@ -4,7 +4,7 @@ Atlassian Document Format (ADF) utilities.
 This module provides utilities for parsing ADF content from Jira Cloud.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def adf_to_text(adf_content: dict | list | str | None) -> str | None:
@@ -59,7 +59,7 @@ def adf_to_text(adf_content: dict | list | str | None) -> str | None:
             timestamp = attrs.get("timestamp")
             if timestamp:
                 try:
-                    dt = datetime.fromtimestamp(int(timestamp) / 1000, tz=timezone.utc)
+                    dt = datetime.fromtimestamp(int(timestamp) / 1000, tz=UTC)
                     return dt.strftime("%Y-%m-%d")
                 except (ValueError, OSError, TypeError):
                     return str(timestamp)

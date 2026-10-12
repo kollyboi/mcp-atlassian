@@ -30,7 +30,7 @@ class JiraComment(ApiModel, TimestampMixin):
     author: JiraUser | None = None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraComment":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraComment:
         """
         Create a JiraComment from a Jira API response.
 

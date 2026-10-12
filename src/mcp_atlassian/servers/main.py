@@ -4,7 +4,7 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from cachetools import TTLCache
 from fastmcp import FastMCP
@@ -192,7 +192,7 @@ class AtlassianMCP(FastMCP[MainAppContext]):
         middleware: list[Middleware] | None = None,
         transport: Literal["streamable-http", "sse"] = "streamable-http",
         **kwargs: Any,
-    ) -> "Starlette":
+    ) -> Starlette:
         user_token_mw = Middleware(UserTokenMiddleware, mcp_server_ref=self)
         final_middleware_list = [user_token_mw]
         if middleware:
@@ -216,7 +216,7 @@ class UserTokenMiddleware:
     """
 
     def __init__(
-        self, app: ASGIApp, mcp_server_ref: Optional["AtlassianMCP"] = None
+        self, app: ASGIApp, mcp_server_ref: AtlassianMCP | None = None
     ) -> None:
         self.app = app
         self.mcp_server_ref = mcp_server_ref

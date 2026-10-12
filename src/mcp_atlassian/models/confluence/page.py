@@ -35,7 +35,7 @@ class ConfluenceVersion(ApiModel, TimestampMixin):
     @classmethod
     def from_api_response(
         cls, data: dict[str, Any], **kwargs: Any
-    ) -> "ConfluenceVersion":
+    ) -> ConfluenceVersion:
         """
         Create a ConfluenceVersion from a Confluence API response.
 
@@ -111,7 +111,7 @@ class ConfluencePage(ApiModel, TimestampMixin):
         return self.content
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "ConfluencePage":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> ConfluencePage:
         """
         Create a ConfluencePage from a Confluence API response.
 

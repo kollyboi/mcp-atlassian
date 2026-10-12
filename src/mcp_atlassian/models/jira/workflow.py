@@ -35,7 +35,7 @@ class JiraTransition(ApiModel):
     is_conditional: bool = False
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraTransition":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraTransition:
         """
         Create a JiraTransition from a Jira API response.
 

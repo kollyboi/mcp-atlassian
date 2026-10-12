@@ -15,7 +15,7 @@ import time
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import keyring
 import requests
@@ -386,7 +386,7 @@ class OAuthConfig:
             return {}
 
     @classmethod
-    def from_env(cls) -> Optional["OAuthConfig"]:
+    def from_env(cls) -> OAuthConfig | None:
         """Create an OAuth configuration from environment variables.
 
         Returns:
@@ -463,7 +463,7 @@ class BYOAccessTokenOAuthConfig:
     expires_at: None = None
 
     @classmethod
-    def from_env(cls) -> Optional["BYOAccessTokenOAuthConfig"]:
+    def from_env(cls) -> BYOAccessTokenOAuthConfig | None:
         """Create a BYOAccessTokenOAuthConfig from environment variables.
 
         Reads `ATLASSIAN_OAUTH_CLOUD_ID` and `ATLASSIAN_OAUTH_ACCESS_TOKEN`.

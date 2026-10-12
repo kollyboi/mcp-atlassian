@@ -8,7 +8,7 @@ and the simplified dictionary conversion for API responses.
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -1957,7 +1957,7 @@ class TestJiraChangelog:
         """Test that datetime created field serializes to JSON properly."""
         changelog = JiraChangelog(
             id="12345",
-            created=datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+            created=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
             items=[],
         )
 

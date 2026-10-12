@@ -38,7 +38,7 @@ class JiraUser(ApiModel):
     time_zone: str | None = None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraUser":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraUser:
         """
         Create a JiraUser from a Jira API response.
 
@@ -96,7 +96,7 @@ class JiraStatusCategory(ApiModel):
     @classmethod
     def from_api_response(
         cls, data: dict[str, Any], **kwargs: Any
-    ) -> "JiraStatusCategory":
+    ) -> JiraStatusCategory:
         """
         Create a JiraStatusCategory from a Jira API response.
 
@@ -142,7 +142,7 @@ class JiraStatus(ApiModel):
     category: JiraStatusCategory | None = None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraStatus":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraStatus:
         """
         Create a JiraStatus from a Jira API response.
 
@@ -202,7 +202,7 @@ class JiraIssueType(ApiModel):
     icon_url: str | None = None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraIssueType":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraIssueType:
         """
         Create a JiraIssueType from a Jira API response.
 
@@ -246,7 +246,7 @@ class JiraPriority(ApiModel):
     icon_url: str | None = None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraPriority":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraPriority:
         """
         Create a JiraPriority from a Jira API response.
 
@@ -297,7 +297,7 @@ class JiraAttachment(ApiModel):
     thumbnail_url: str | None = None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraAttachment":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraAttachment:
         """
         Create a JiraAttachment from a Jira API response.
 
@@ -378,9 +378,7 @@ class JiraTimetracking(ApiModel):
     time_spent_seconds: int | None = None
 
     @classmethod
-    def from_api_response(
-        cls, data: dict[str, Any], **kwargs: Any
-    ) -> "JiraTimetracking":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraTimetracking:
         """
         Create a JiraTimetracking from a Jira API response.
 
@@ -428,7 +426,7 @@ class JiraResolution(ApiModel):
     description: str | None = None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraResolution":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraResolution:
         """Create a JiraResolution from a Jira API response."""
         if not isinstance(data, dict):
             return cls()
@@ -464,7 +462,7 @@ class JiraChangelogItem(ApiModel):
     @classmethod
     def from_api_response(
         cls, data: dict[str, Any], **kwargs: Any
-    ) -> "JiraChangelogItem":
+    ) -> JiraChangelogItem:
         """
         Create a JiraChangeItem from a Jira API response.
         Args:
@@ -526,7 +524,7 @@ class JiraChangelog(ApiModel, TimestampMixin):
         return value.isoformat()
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraChangelog":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraChangelog:
         """
         Create a JiraChangelog from a Jira API response.
         Args:

@@ -27,7 +27,7 @@ Credentials required (separate from regular Jira credentials):
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
@@ -470,7 +470,7 @@ class OrgAdminMixin(JiraClient):
         if last_access is None:
             return None, None, None
 
-        return last_access, last_product, (datetime.now(timezone.utc) - last_access).days
+        return last_access, last_product, (datetime.now(UTC) - last_access).days
 
     def get_inactive_users(
         self,

@@ -299,7 +299,7 @@ class UsersMixin(JiraClient):
 
         return api_kwargs
 
-    def get_user_profile_by_identifier(self, identifier: str) -> "JiraUser":
+    def get_user_profile_by_identifier(self, identifier: str) -> JiraUser:
         """
         Retrieve Jira user profile information by identifier.
 

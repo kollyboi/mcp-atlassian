@@ -73,7 +73,7 @@ class JiraConfig:
         return self.ssl_verify
 
     @classmethod
-    def from_env(cls) -> "JiraConfig":
+    def from_env(cls) -> JiraConfig:
         """Create configuration from environment variables.
 
         Returns:

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 F = TypeVar("F", bound=Callable[..., Awaitable[Any]])
 
 
-def check_write_access(func: F) -> F:
+def check_write_access(func: F) -> F:  # noqa: UP047
     """
     Decorator for FastMCP tools to check if the application is in read-only mode.
     If in read-only mode, it raises a ValueError.

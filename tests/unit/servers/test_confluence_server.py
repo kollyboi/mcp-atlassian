@@ -132,7 +132,7 @@ def test_confluence_mcp(mock_confluence_fetcher, mock_base_confluence_config):
     )
 
     @asynccontextmanager
-    async def test_lifespan(app: FastMCP) -> AsyncGenerator[MainAppContext, None]:
+    async def test_lifespan(app: FastMCP) -> AsyncGenerator[MainAppContext]:
         try:
             yield MainAppContext(
                 full_confluence_config=mock_base_confluence_config, read_only=False
@@ -187,7 +187,7 @@ def no_fetcher_test_confluence_mcp(mock_base_confluence_config):
     @asynccontextmanager
     async def no_fetcher_test_lifespan(
         app: FastMCP,
-    ) -> AsyncGenerator[MainAppContext, None]:
+    ) -> AsyncGenerator[MainAppContext]:
         try:
             yield MainAppContext(
                 full_confluence_config=mock_base_confluence_config, read_only=False

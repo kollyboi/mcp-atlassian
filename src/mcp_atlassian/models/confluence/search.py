@@ -31,7 +31,7 @@ class ConfluenceSearchResult(ApiModel, TimestampMixin):
     @classmethod
     def from_api_response(
         cls, data: dict[str, Any], **kwargs: Any
-    ) -> "ConfluenceSearchResult":
+    ) -> ConfluenceSearchResult:
         """
         Create a ConfluenceSearchResult from a Confluence API response.
 
@@ -64,7 +64,7 @@ class ConfluenceSearchResult(ApiModel, TimestampMixin):
         )
 
     @model_validator(mode="after")
-    def validate_search_result(self) -> "ConfluenceSearchResult":
+    def validate_search_result(self) -> ConfluenceSearchResult:
         """Validate the search result and log warnings if needed."""
         if self.total_size > 0 and not self.results:
             logger.warning(

@@ -262,7 +262,7 @@ def test_jira_mcp(mock_jira_fetcher, mock_base_jira_config):
     """Create a test FastMCP instance with standard configuration."""
 
     @asynccontextmanager
-    async def test_lifespan(app: FastMCP) -> AsyncGenerator[MainAppContext, None]:
+    async def test_lifespan(app: FastMCP) -> AsyncGenerator[MainAppContext]:
         try:
             yield MainAppContext(
                 full_jira_config=mock_base_jira_config, read_only=False
@@ -344,7 +344,7 @@ def no_fetcher_test_jira_mcp(mock_base_jira_config):
     @asynccontextmanager
     async def no_fetcher_test_lifespan(
         app: FastMCP,
-    ) -> AsyncGenerator[MainAppContext, None]:
+    ) -> AsyncGenerator[MainAppContext]:
         try:
             yield MainAppContext(full_jira_config=None, read_only=False)
         finally:

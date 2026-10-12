@@ -36,7 +36,7 @@ class JiraProject(ApiModel):
     avatar_url: str | None = None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraProject":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraProject:
         """
         Create a JiraProject from a Jira API response.
 

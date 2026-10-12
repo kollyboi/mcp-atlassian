@@ -26,9 +26,7 @@ class JiraSearchResult(ApiModel):
     issues: list[JiraIssue] = Field(default_factory=list)
 
     @classmethod
-    def from_api_response(
-        cls, data: dict[str, Any], **kwargs: Any
-    ) -> "JiraSearchResult":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraSearchResult:
         """
         Create a JiraSearchResult from a Jira API response.
 
@@ -85,7 +83,7 @@ class JiraSearchResult(ApiModel):
         )
 
     @model_validator(mode="after")
-    def validate_search_result(self) -> "JiraSearchResult":
+    def validate_search_result(self) -> JiraSearchResult:
         """
         Validate the search result.
 

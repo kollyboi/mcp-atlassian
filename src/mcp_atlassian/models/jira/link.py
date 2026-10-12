@@ -28,7 +28,7 @@ class JiraIssueLinkType(ApiModel):
     @classmethod
     def from_api_response(
         cls, data: dict[str, Any], **kwargs: Any
-    ) -> "JiraIssueLinkType":
+    ) -> JiraIssueLinkType:
         """
         Create a JiraIssueLinkType from a Jira API response.
 
@@ -85,7 +85,7 @@ class JiraLinkedIssueFields(ApiModel):
     @classmethod
     def from_api_response(
         cls, data: dict[str, Any], **kwargs: Any
-    ) -> "JiraLinkedIssueFields":
+    ) -> JiraLinkedIssueFields:
         """
         Create a JiraLinkedIssueFields from a Jira API response.
 
@@ -156,9 +156,7 @@ class JiraLinkedIssue(ApiModel):
     fields: JiraLinkedIssueFields | None = None
 
     @classmethod
-    def from_api_response(
-        cls, data: dict[str, Any], **kwargs: Any
-    ) -> "JiraLinkedIssue":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraLinkedIssue:
         """
         Create a JiraLinkedIssue from a Jira API response.
 
@@ -220,7 +218,7 @@ class JiraIssueLink(ApiModel):
     outward_issue: JiraLinkedIssue | None = None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraIssueLink":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraIssueLink:
         """
         Create a JiraIssueLink from a Jira API response.
 

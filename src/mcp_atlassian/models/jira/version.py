@@ -17,7 +17,7 @@ class JiraVersion(ApiModel):
     archived: bool = False
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> "JiraVersion":
+    def from_api_response(cls, data: dict[str, Any], **kwargs: Any) -> JiraVersion:
         """Create JiraVersion from API response."""
         return cls(
             id=str(data.get("id", "")),

@@ -30,7 +30,7 @@ class ConfluenceUserSearchResult(ApiModel):
     @classmethod
     def from_api_response(
         cls, data: dict[str, Any], **kwargs: Any
-    ) -> "ConfluenceUserSearchResult":
+    ) -> ConfluenceUserSearchResult:
         """
         Create a ConfluenceUserSearchResult from a Confluence API response.
 
@@ -102,7 +102,7 @@ class ConfluenceUserSearchResults(ApiModel, TimestampMixin):
     @classmethod
     def from_api_response(
         cls, data: dict[str, Any], **kwargs: Any
-    ) -> "ConfluenceUserSearchResults":
+    ) -> ConfluenceUserSearchResults:
         """
         Create a ConfluenceUserSearchResults from a Confluence API response.
 
