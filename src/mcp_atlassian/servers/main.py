@@ -8,9 +8,9 @@ from typing import Any, Literal
 
 from cachetools import TTLCache
 from fastmcp import FastMCP
+from fastmcp.server.http import StarletteWithLifespan
 from fastmcp.tools import Tool as FastMCPTool
 from mcp.types import Tool as MCPTool
-from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -186,13 +186,15 @@ class AtlassianMCP(FastMCP[MainAppContext]):
         )
         return filtered_tools
 
-    def http_app(
+    # fastmcp's http_app() gained parameters between 2.13 and 2.14, so the extra
+    # arguments are forwarded via **kwargs instead of mirroring one signature.
+    def http_app(  # type: ignore[override]
         self,
         path: str | None = None,
         middleware: list[Middleware] | None = None,
-        transport: Literal["streamable-http", "sse"] = "streamable-http",
+        transport: Literal["http", "streamable-http", "sse"] = "streamable-http",
         **kwargs: Any,
-    ) -> Starlette:
+    ) -> StarletteWithLifespan:
         user_token_mw = Middleware(UserTokenMiddleware, mcp_server_ref=self)
         final_middleware_list = [user_token_mw]
         if middleware:
@@ -204,7 +206,9 @@ class AtlassianMCP(FastMCP[MainAppContext]):
 
 
 token_validation_cache: TTLCache[
-    int, tuple[bool, str | None, JiraFetcher | None, ConfluenceFetcher | None]
+    int,
+    tuple[bool, str | None, JiraFetcher | None, ConfluenceFetcher | None],
+    float,
 ] = TTLCache(maxsize=100, ttl=300)
 
 
