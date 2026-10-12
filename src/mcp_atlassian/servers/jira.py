@@ -2843,14 +2843,32 @@ async def search_statuses(
 async def create_statuses(
     ctx: Context,
     statuses: Annotated[
-        list[dict[str, Any]], Field(description="Status definitions to create.")
+        list[dict[str, Any]],
+        Field(
+            description=(
+                "Status definitions to create. Each has name, statusCategory"
+                " (TODO, IN_PROGRESS or DONE) and optional description."
+            )
+        ),
     ],
+    scope: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description=(
+                "Scope applied to all statuses. Defaults to"
+                ' {"type": "GLOBAL"}. For a project-scoped status use'
+                ' {"type": "PROJECT", "project": {"id": "<project id>"}}.'
+            ),
+            default=None,
+        ),
+    ] = None,
 ) -> str:
     """Create Jira statuses."""
     jira = await get_jira_fetcher(ctx)
     try:
         return _admin_ok(
-            action="statuses_created", statuses=jira.create_statuses(statuses)
+            action="statuses_created",
+            statuses=jira.create_statuses(statuses, scope),
         )
     except Exception as e:
         return _admin_error("create_statuses", e)
@@ -2906,11 +2924,22 @@ async def search_workflows(
     max_results: Annotated[
         int, Field(description="Maximum results.", default=50, ge=1, le=50)
     ] = 50,
+    expand: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional expand parameter. Use 'values.transitions' to include"
+                " transitions (with rules) in each workflow; required to build a"
+                " complete definition before update_workflows."
+            ),
+            default=None,
+        ),
+    ] = None,
 ) -> str:
     """Search Jira workflows."""
     jira = await get_jira_fetcher(ctx)
     try:
-        return _admin_ok(**jira.search_workflows(query, start_at, max_results))
+        return _admin_ok(**jira.search_workflows(query, start_at, max_results, expand))
     except Exception as e:
         return _admin_error("search_workflows", e)
 
@@ -2923,17 +2952,69 @@ async def search_workflows(
 async def update_workflows(
     ctx: Context,
     workflows: Annotated[
-        list[dict[str, Any]], Field(description="Workflow update definitions.")
+        list[dict[str, Any]],
+        Field(
+            description=(
+                "Workflow update definitions. Each needs id, version,"
+                " statuses (statusReference, properties) and the complete"
+                " transitions list; read it with search_workflows and"
+                " expand='values.transitions' first."
+            )
+        ),
     ],
+    statuses: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description=(
+                "The statuses to associate with the workflows, sent at the top"
+                " level of the request next to workflows. Each needs name,"
+                " statusCategory and statusReference; add id when reusing an"
+                " existing status. A request without statuses has been"
+                " rejected by Jira."
+            ),
+            default=None,
+        ),
+    ] = None,
 ) -> str:
     """Update Jira workflow definitions."""
     jira = await get_jira_fetcher(ctx)
     try:
         return _admin_ok(
-            action="workflows_updated", result=jira.update_workflows(workflows)
+            action="workflows_updated",
+            result=jira.update_workflows(workflows, statuses),
         )
     except Exception as e:
         return _admin_error("update_workflows", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Validate Workflow Update", "readOnlyHint": True},
+)
+async def validate_update_workflows(
+    ctx: Context,
+    workflows: Annotated[
+        list[dict[str, Any]],
+        Field(description="Same workflow definitions as update_workflows."),
+    ],
+    statuses: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Same statuses as update_workflows.", default=None),
+    ] = None,
+    levels: Annotated[
+        list[str] | None,
+        Field(
+            description="Optional result levels: 'WARNING' and/or 'ERROR'.",
+            default=None,
+        ),
+    ] = None,
+) -> str:
+    """Dry-run a workflow update. Nothing is written; returns validation errors."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(**jira.validate_update_workflows(workflows, statuses, levels))
+    except Exception as e:
+        return _admin_error("validate_update_workflows", e)
 
 
 @jira_mcp.tool(

@@ -35,11 +35,24 @@ class StatusesMixin(JiraClient):
             )
         return response
 
-    def create_statuses(self, statuses: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Create statuses."""
+    def create_statuses(
+        self,
+        statuses: list[dict[str, Any]],
+        scope: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Create statuses.
+
+        Jira requires ``scope`` at the top level of the payload, next to
+        ``statuses``; it is rejected on the individual statuses. Defaults to
+        ``{"type": "GLOBAL"}``. Use ``{"type": "PROJECT", "project": {"id": ...}}``
+        for a project-scoped status.
+        """
         if not statuses:
             raise ValueError("statuses must contain at least one status")
-        response = self.jira.post("rest/api/3/statuses", json={"statuses": statuses})
+        response = self.jira.post(
+            "rest/api/3/statuses",
+            json={"scope": scope or {"type": "GLOBAL"}, "statuses": statuses},
+        )
         if not isinstance(response, list):
             raise TypeError(
                 f"Unexpected response type from status creation: {type(response)}"
