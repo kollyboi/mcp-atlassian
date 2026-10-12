@@ -100,6 +100,10 @@ Documentation is also available in [llms.txt format](https://llmstxt.org/), whic
 | `jira_get_field_options` / `jira_add_field_options` - Maintain select options | |
 | `jira_search_statuses` / `jira_update_statuses` - Configure statuses | |
 | `jira_search_workflows` / `jira_update_workflows` - Configure workflows | |
+| `jira_create_screen` / `jira_copy_screen` / `jira_add_screen_tab` / `jira_update_screen_scheme` - Configure screens | |
+| `jira_list_automation_rules` / `jira_create_automation_rule` / `jira_update_automation_rule` / `jira_set_automation_rule_state` - Manage automation rules (API token only) | |
+| `jira_search_filters` / `jira_create_filter` / `jira_update_filter` / `jira_set_filter_columns` / `jira_add_filter_share_permission` - Manage saved searches | |
+| `jira_create_dashboard` / `jira_add_gadget` / `jira_update_gadget` / `jira_set_gadget_config` - Build dashboards | |
 
 See [Tools Reference](https://personal-1d37018d.mintlify.app/docs/tools-reference) for the complete list.
 

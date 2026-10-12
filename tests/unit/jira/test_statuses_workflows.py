@@ -35,6 +35,10 @@ def test_status_operations(mixin):
 def test_workflow_operations(mixin):
     mixin.jira.get.return_value = {"values": [{"name": "Application"}]}
     assert mixin.search_workflows("Application")["values"]
+    mixin.jira.get.assert_called_with(
+        "rest/api/3/workflows/search",
+        params={"startAt": 0, "maxResults": 50, "queryString": "Application"},
+    )
 
     mixin.jira.post.return_value = {"taskId": "1"}
     assert mixin.update_workflows([{"name": "Application"}]) == {"taskId": "1"}
@@ -46,6 +50,23 @@ def test_workflow_operations(mixin):
     mixin.jira.post.assert_called_with(
         "rest/api/3/workflowscheme/10/draft/publish",
         json={"statusMappings": [{"statusId": "1", "newStatusId": "2"}]},
+    )
+
+
+def test_search_workflows_partial_name_still_matches(mixin):
+    """Regression: the legacy endpoint matched only exact workflow names.
+
+    A partial name has to be sent as queryString to the /workflows/search
+    endpoint for Jira to return any match.
+    """
+    mixin.jira.get.return_value = {"values": [{"name": "BB5 - ICE workflow"}]}
+
+    assert mixin.search_workflows("BB5 - ICE")["values"][0]["name"] == (
+        "BB5 - ICE workflow"
+    )
+    mixin.jira.get.assert_called_once_with(
+        "rest/api/3/workflows/search",
+        params={"startAt": 0, "maxResults": 50, "queryString": "BB5 - ICE"},
     )
 
 

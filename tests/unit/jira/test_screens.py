@@ -189,7 +189,7 @@ class TestScreenReads:
         assert result["values"][0]["id"] == "10"
         mixin.jira.get.assert_called_once_with(
             "rest/api/3/screens",
-            params={"startAt": 5, "maxResults": 20, "query": "Create"},
+            params={"startAt": 5, "maxResults": 20, "queryString": "Create"},
         )
 
 
@@ -209,6 +209,99 @@ class TestScreenWrites:
         mixin.jira.delete.assert_called_once_with(
             "rest/api/3/screens/10/tabs/20/fields/customfield_10914"
         )
+
+    def test_create_screen_payload(self, mixin):
+        mixin.jira.post.return_value = {"id": 999, "name": "Loc"}
+        result = mixin.create_screen("Loc", description="d")
+        assert result["id"] == 999
+        mixin.jira.post.assert_called_once_with(
+            "rest/api/3/screens", json={"name": "Loc", "description": "d"}
+        )
+
+    def test_add_screen_tab_payload(self, mixin):
+        mixin.jira.post.return_value = {"id": 77, "name": "Details"}
+        result = mixin.add_screen_tab("10", "Details")
+        assert result["id"] == 77
+        mixin.jira.post.assert_called_once_with(
+            "rest/api/3/screens/10/tabs", json={"name": "Details"}
+        )
+
+    def test_copy_screen_recreates_tabs_and_fields_in_order(self, mixin):
+        def get(url, params=None):
+            path = urlparse(url).path
+            if path == "rest/api/3/screens":
+                return {"values": [{"id": 10, "name": "Src", "description": "sd"}]}
+            if path == "rest/api/3/screens/10/tabs":
+                return [{"id": 1, "name": "Main"}, {"id": 2, "name": "Extra"}]
+            if path == "rest/api/3/screens/10/tabs/1/fields":
+                return [{"id": "summary"}, {"id": "customfield_1"}]
+            if path == "rest/api/3/screens/10/tabs/2/fields":
+                return [{"id": "assignee"}]
+            msg = f"unexpected GET {url}"
+            raise AssertionError(msg)
+
+        new_tab_ids = iter([12, 13])
+
+        def post(url, json=None):
+            if url == "rest/api/3/screens":
+                return {"id": 20, "name": "Copy", "description": "sd"}
+            if url == "rest/api/3/screens/20/tabs":
+                return {"id": next(new_tab_ids), "name": json["name"]}
+            if url.startswith("rest/api/3/screens/20/tabs/") and url.endswith(
+                "/fields"
+            ):
+                return {"id": "x"}
+            msg = f"unexpected POST {url}"
+            raise AssertionError(msg)
+
+        mixin.jira.get.side_effect = get
+        mixin.jira.post.side_effect = post
+
+        result = mixin.copy_screen("10", "Copy")
+
+        assert result["id"] == 20
+        assert result["copy_summary"] == {
+            "source_screen_id": "10",
+            "tabs": [{"tab": "Main", "fields": 2}, {"tab": "Extra", "fields": 1}],
+            "fields_copied": 3,
+        }
+        field_posts = [
+            (c.args[0], c.kwargs["json"]["fieldId"])
+            for c in mixin.jira.post.call_args_list
+            if c.args[0].endswith("/fields")
+        ]
+        assert field_posts == [
+            ("rest/api/3/screens/20/tabs/12/fields", "summary"),
+            ("rest/api/3/screens/20/tabs/12/fields", "customfield_1"),
+            ("rest/api/3/screens/20/tabs/13/fields", "assignee"),
+        ]
+
+    def test_copy_screen_missing_source_raises(self, mixin):
+        def get(url, params=None):
+            if urlparse(url).path == "rest/api/3/screens":
+                return {"values": []}
+            msg = f"unexpected GET {url}"
+            raise AssertionError(msg)
+
+        mixin.jira.get.side_effect = get
+        with pytest.raises(ValueError, match="does not exist"):
+            mixin.copy_screen("10", "Copy")
+        mixin.jira.post.assert_not_called()
+
+    def test_update_screen_scheme_sends_only_given_values(self, mixin):
+        mixin.jira.put.return_value = None
+        mixin.update_screen_scheme(
+            "7", name="Scheme", create_screen_id="21", view_screen_id="22"
+        )
+        mixin.jira.put.assert_called_once_with(
+            "rest/api/3/screenscheme/7",
+            data={"name": "Scheme", "screens": {"create": "21", "view": "22"}},
+        )
+
+    def test_update_screen_scheme_requires_a_change(self, mixin):
+        with pytest.raises(ValueError, match="at least one"):
+            mixin.update_screen_scheme("7")
+        mixin.jira.put.assert_not_called()
 
 
 class TestContexts:
@@ -364,6 +457,10 @@ WRITE_TOOLS = [
     ),
     ("create_custom_field", {"name": "n", "field_type": "t"}),
     ("update_field", {"field_id": "f", "name": "n"}),
+    ("create_screen", {"name": "n"}),
+    ("add_screen_tab", {"screen_id": "1", "tab_name": "n"}),
+    ("copy_screen", {"source_screen_id": "1", "new_name": "n"}),
+    ("update_screen_scheme", {"screen_scheme_id": "1", "name": "n"}),
 ]
 
 

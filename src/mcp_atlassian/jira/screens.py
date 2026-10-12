@@ -258,7 +258,9 @@ class ScreensMixin(JiraClient):
             "maxResults": min(max_results, 100),
         }
         if query:
-            params["query"] = query
+            # The API silently ignores an unknown "query" parameter and would
+            # return every screen, so the documented name must be used.
+            params["queryString"] = query
         return self._expect_dict(
             self.jira.get("rest/api/3/screens", params=params), "screens"
         )
@@ -266,6 +268,165 @@ class ScreensMixin(JiraClient):
     # ------------------------------------------------------------------
     # Screens, tabs and tab fields
     # ------------------------------------------------------------------
+
+    def create_screen(
+        self, name: str, description: str | None = None
+    ) -> dict[str, Any]:
+        """Create a screen.
+
+        Screens are created without tabs (Jira adds a default "Field Tab") and
+        are not used by any project until a screen scheme references them.
+
+        Args:
+            name: Screen name; must be unique. Max 255 characters.
+            description: Optional screen description.
+
+        Returns:
+            The created screen, including its numeric ``id``.
+        """
+        payload: dict[str, Any] = {"name": name}
+        if description is not None:
+            payload["description"] = description
+        logger.info(f"Creating screen '{name}'")
+        return self._expect_dict(
+            self.jira.post("rest/api/3/screens", json=payload), "screens"
+        )
+
+    def add_screen_tab(self, screen_id: str, tab_name: str) -> dict[str, Any]:
+        """Add a tab to a screen.
+
+        Args:
+            screen_id: Screen ID.
+            tab_name: Name of the new tab.
+
+        Returns:
+            The created tab, including its numeric ``id``.
+        """
+        screen = _require_id("screen_id", screen_id)
+        endpoint = f"rest/api/3/screens/{screen}/tabs"
+        logger.info(f"Adding tab '{tab_name}' to screen {screen}")
+        return self._expect_dict(
+            self.jira.post(endpoint, json={"name": tab_name}), endpoint
+        )
+
+    def _get_screen_by_id(self, screen_id: str) -> dict[str, Any] | None:
+        """Fetch a single screen by its numeric ID.
+
+        There is no ``GET /screens/{id}`` endpoint, so the list endpoint's
+        ``id`` filter is used instead.
+
+        Args:
+            screen_id: Numeric screen ID.
+
+        Returns:
+            The screen dict, or None when it does not exist.
+        """
+        screen = _require_id("screen_id", screen_id)
+        query = urlencode({"id": [screen]}, doseq=True)
+        page = self._expect_dict(
+            self.jira.get(f"rest/api/3/screens?{query}"), "screens"
+        )
+        values = page.get("values", [])
+        return values[0] if values else None
+
+    def copy_screen(
+        self, source_screen_id: str, new_name: str, description: str | None = None
+    ) -> dict[str, Any]:
+        """Copy a screen with its tabs and fields, preserving field order.
+
+        There is no REST endpoint for copying screens, so this creates a new
+        screen and re-adds every tab and field from the source screen.
+
+        Args:
+            source_screen_id: ID of the screen to copy.
+            new_name: Name for the new screen; must be unique.
+            description: Optional description; defaults to the source screen's.
+
+        Returns:
+            The created screen plus a ``copy_summary`` with the tabs and
+            fields that were copied.
+
+        Raises:
+            ValueError: If the source screen does not exist.
+        """
+        source = _require_id("source_screen_id", source_screen_id)
+        source_screen = self._get_screen_by_id(source)
+        if source_screen is None:
+            raise ValueError(f"Source screen {source} does not exist")
+        description_to_use = (
+            description if description is not None else source_screen.get("description")
+        )
+        created = self.create_screen(new_name, description_to_use or None)
+
+        tabs: list[dict[str, Any]] = []
+        copied_fields = 0
+        for tab in self.get_screen_tabs(source):
+            new_tab = self.add_screen_tab(str(created["id"]), str(tab["name"]))
+            fields = self.get_screen_tab_fields(source, str(tab["id"]))
+            for field in fields:
+                self.add_field_to_screen_tab(
+                    str(created["id"]), str(new_tab["id"]), str(field["id"])
+                )
+                copied_fields += 1
+            tabs.append({"tab": tab["name"], "fields": len(fields)})
+
+        created["copy_summary"] = {
+            "source_screen_id": source,
+            "tabs": tabs,
+            "fields_copied": copied_fields,
+        }
+        return created
+
+    def update_screen_scheme(
+        self,
+        screen_scheme_id: str,
+        name: str | None = None,
+        description: str | None = None,
+        *,
+        default_screen_id: str | None = None,
+        create_screen_id: str | None = None,
+        edit_screen_id: str | None = None,
+        view_screen_id: str | None = None,
+    ) -> None:
+        """Update a screen scheme.
+
+        Only the values that are supplied are changed; omitted screens keep
+        their current assignment. This affects every project that uses the
+        scheme.
+
+        Args:
+            screen_scheme_id: Screen scheme ID.
+            name: New scheme name.
+            description: New scheme description.
+            default_screen_id: Screen ID for the default screen.
+            create_screen_id: Screen ID for the create screen.
+            edit_screen_id: Screen ID for the edit screen.
+            view_screen_id: Screen ID for the view screen.
+
+        Raises:
+            ValueError: If no field to update is given.
+        """
+        scheme = _require_id("screen_scheme_id", screen_scheme_id)
+        payload: dict[str, Any] = {}
+        if name is not None:
+            payload["name"] = name
+        if description is not None:
+            payload["description"] = description
+        screens: dict[str, str] = {}
+        if default_screen_id is not None:
+            screens["default"] = _require_id("default_screen_id", default_screen_id)
+        if create_screen_id is not None:
+            screens["create"] = _require_id("create_screen_id", create_screen_id)
+        if edit_screen_id is not None:
+            screens["edit"] = _require_id("edit_screen_id", edit_screen_id)
+        if view_screen_id is not None:
+            screens["view"] = _require_id("view_screen_id", view_screen_id)
+        if screens:
+            payload["screens"] = screens
+        if not payload:
+            raise ValueError("Provide at least one field to update")
+        logger.info(f"Updating screen scheme {scheme}")
+        self.jira.put(f"rest/api/3/screenscheme/{scheme}", data=payload)
 
     def get_screen_tabs(
         self, screen_id: str, project_key: str | None = None

@@ -12,14 +12,19 @@ class WorkflowsMixin(JiraClient):
     def search_workflows(
         self, query: str | None = None, start_at: int = 0, max_results: int = 50
     ) -> dict[str, Any]:
-        """Search workflow definitions."""
+        """Search workflow definitions.
+
+        The query is a substring match against the workflow name. The legacy
+        ``/workflow/search`` endpoint only matched exact names (its
+        ``workflowName`` parameter), so partial names returned nothing.
+        """
         params: dict[str, Any] = {
             "startAt": start_at,
             "maxResults": min(max_results, 50),
         }
         if query:
-            params["workflowName"] = query
-        response = self.jira.get("rest/api/3/workflow/search", params=params)
+            params["queryString"] = query
+        response = self.jira.get("rest/api/3/workflows/search", params=params)
         if not isinstance(response, dict):
             raise TypeError(
                 f"Unexpected response type from workflow search: {type(response)}"

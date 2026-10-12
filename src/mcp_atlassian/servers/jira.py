@@ -3477,3 +3477,976 @@ async def get_field_configuration_items(
         return _admin_ok(items=items)
     except Exception as e:
         return _admin_error("get_field_configuration_items", e)
+
+
+# ---------------------------------------------------------------------------
+# Screen creation tools. Require the "Administer Jira" global permission.
+# ---------------------------------------------------------------------------
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Create Screen", "destructiveHint": True},
+)
+@check_write_access
+async def create_screen(
+    ctx: Context,
+    name: Annotated[str, Field(description="Screen name; must be unique.")],
+    description: Annotated[
+        str | None, Field(description="(Optional) Screen description.", default=None)
+    ] = None,
+) -> str:
+    """Create a screen.
+
+    The screen is not used by any project until a screen scheme references it.
+
+    Returns:
+        JSON with the created screen, including its id.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        screen = jira.create_screen(name, description=description)
+        return _admin_ok(action="screen_created", screen=screen)
+    except Exception as e:
+        return _admin_error("create_screen", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Add Screen Tab", "destructiveHint": True},
+)
+@check_write_access
+async def add_screen_tab(
+    ctx: Context,
+    screen_id: Annotated[str, Field(description="Screen ID.")],
+    tab_name: Annotated[str, Field(description="Name of the new tab.")],
+) -> str:
+    """Add a tab to a screen.
+
+    Returns:
+        JSON with the created tab, including its id.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        tab = jira.add_screen_tab(screen_id, tab_name)
+        return _admin_ok(action="tab_added", tab=tab)
+    except Exception as e:
+        return _admin_error("add_screen_tab", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Copy Screen", "destructiveHint": True},
+)
+@check_write_access
+async def copy_screen(
+    ctx: Context,
+    source_screen_id: Annotated[str, Field(description="ID of the screen to copy.")],
+    new_name: Annotated[
+        str, Field(description="Name for the new screen; must be unique.")
+    ],
+    description: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Optional) Description for the new screen; defaults to the "
+                "source screen's."
+            ),
+            default=None,
+        ),
+    ] = None,
+) -> str:
+    """Copy a screen with its tabs and fields, preserving field order.
+
+    There is no REST endpoint for copying, so the screen is recreated tab by
+    tab and field by field.
+
+    Returns:
+        JSON with the created screen and a 'copy_summary'.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        screen = jira.copy_screen(source_screen_id, new_name, description=description)
+        return _admin_ok(action="screen_copied", screen=screen)
+    except Exception as e:
+        return _admin_error("copy_screen", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Update Screen Scheme", "destructiveHint": True},
+)
+@check_write_access
+async def update_screen_scheme(
+    ctx: Context,
+    screen_scheme_id: Annotated[str, Field(description="Screen scheme ID.")],
+    name: Annotated[
+        str | None, Field(description="(Optional) New scheme name.", default=None)
+    ] = None,
+    description: Annotated[
+        str | None,
+        Field(description="(Optional) New scheme description.", default=None),
+    ] = None,
+    default_screen_id: Annotated[
+        str | None, Field(description="(Optional) Default screen ID.", default=None)
+    ] = None,
+    create_screen_id: Annotated[
+        str | None, Field(description="(Optional) Create screen ID.", default=None)
+    ] = None,
+    edit_screen_id: Annotated[
+        str | None, Field(description="(Optional) Edit screen ID.", default=None)
+    ] = None,
+    view_screen_id: Annotated[
+        str | None, Field(description="(Optional) View screen ID.", default=None)
+    ] = None,
+) -> str:
+    """Update a screen scheme (name, description and/or assigned screens).
+
+    Only the given values are changed; this affects every project that uses
+    the scheme.
+
+    Returns:
+        JSON indicating success or failure.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        jira.update_screen_scheme(
+            screen_scheme_id,
+            name=name,
+            description=description,
+            default_screen_id=default_screen_id,
+            create_screen_id=create_screen_id,
+            edit_screen_id=edit_screen_id,
+            view_screen_id=view_screen_id,
+        )
+        return _admin_ok(
+            action="screen_scheme_updated", screen_scheme_id=screen_scheme_id
+        )
+    except Exception as e:
+        return _admin_error("update_screen_scheme", e)
+
+
+# ---------------------------------------------------------------------------
+# Automation rule tools. Use the Automation REST API on api.atlassian.com,
+# which Atlassian only allows with an API token (not OAuth).
+# ---------------------------------------------------------------------------
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "List Automation Rules", "readOnlyHint": True},
+)
+async def list_automation_rules(
+    ctx: Context,
+    limit: Annotated[
+        int, Field(description="Page size.", default=50, ge=1, le=100)
+    ] = 50,
+    cursor: Annotated[
+        str | None,
+        Field(
+            description=("(Optional) Opaque cursor from a previous response's links."),
+            default=None,
+        ),
+    ] = None,
+    trigger: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Optional) Filter by trigger, e.g. "
+                "'jira.version.event.trigger:created'."
+            ),
+            default=None,
+        ),
+    ] = None,
+    state: Annotated[
+        str | None,
+        Field(
+            description="(Optional) Filter by state: ENABLED or DISABLED.",
+            default=None,
+        ),
+    ] = None,
+    scope: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Optional) Filter by a single ARI, e.g. a project scope "
+                "'ari:cloud:jira:<cloud-id>:project/<project-id>'."
+            ),
+            default=None,
+        ),
+    ] = None,
+) -> str:
+    """List automation rule summaries (name, state, scope, labels).
+
+    Requires API token authentication; Atlassian blocks OAuth apps from this
+    API.
+
+    Returns:
+        JSON with 'rules' and 'links' (next cursor when more rules exist).
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        summary = jira.list_automation_rules(
+            limit=limit,
+            cursor=cursor,
+            trigger=trigger,
+            state=state,
+            scope=scope,
+        )
+        return _admin_ok(rules=summary.get("data", []), links=summary.get("links"))
+    except Exception as e:
+        return _admin_error("list_automation_rules", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Automation Rule", "readOnlyHint": True},
+)
+async def get_automation_rule(
+    ctx: Context,
+    rule_uuid: Annotated[str, Field(description="UUID of the rule.")],
+) -> str:
+    """Get a full automation rule payload by UUID.
+
+    Returns:
+        JSON with the rule config, including trigger and components.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        rule = jira.get_automation_rule(rule_uuid)
+        return _admin_ok(rule=rule)
+    except Exception as e:
+        return _admin_error("get_automation_rule", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Create Automation Rule", "destructiveHint": True},
+)
+@check_write_access
+async def create_automation_rule(
+    ctx: Context,
+    rule: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "Rule payload: name, state, trigger, components, "
+                "ruleScopeARIs, ... Use get_automation_rule on an existing "
+                "rule to see the exact structure."
+            )
+        ),
+    ],
+    connections: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description=(
+                "(Optional) Connection definitions the rule needs (only for "
+                "component types that use connections)."
+            ),
+            default=None,
+        ),
+    ] = None,
+) -> str:
+    """Create an automation rule.
+
+    Requires API token authentication; Atlassian blocks OAuth apps from this
+    API.
+
+    Returns:
+        JSON with the created rule's 'ruleUuid'.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        result = jira.create_automation_rule(rule, connections=connections)
+        return _admin_ok(action="rule_created", **result)
+    except Exception as e:
+        return _admin_error("create_automation_rule", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Update Automation Rule", "destructiveHint": True},
+)
+@check_write_access
+async def update_automation_rule(
+    ctx: Context,
+    rule_uuid: Annotated[str, Field(description="UUID of the rule to update.")],
+    rule: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "The complete rule payload, same structure as "
+                "get_automation_rule's response."
+            )
+        ),
+    ],
+    connections: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="(Optional) Connection definitions.", default=None),
+    ] = None,
+) -> str:
+    """Update an existing automation rule.
+
+    Returns:
+        JSON with the updated rule's 'ruleUuid'.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        result = jira.update_automation_rule(rule_uuid, rule, connections=connections)
+        return _admin_ok(action="rule_updated", **result)
+    except Exception as e:
+        return _admin_error("update_automation_rule", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Set Automation Rule State", "destructiveHint": True},
+)
+@check_write_access
+async def set_automation_rule_state(
+    ctx: Context,
+    rule_uuid: Annotated[str, Field(description="UUID of the rule.")],
+    state: Annotated[
+        str,
+        Field(
+            description="New state: ENABLED or DISABLED.",
+            pattern="^(ENABLED|DISABLED)$",
+        ),
+    ],
+) -> str:
+    """Enable or disable an automation rule.
+
+    Returns:
+        JSON indicating success or failure.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        jira.set_automation_rule_state(rule_uuid, state)
+        return _admin_ok(action="rule_state_set", rule_uuid=rule_uuid, state=state)
+    except Exception as e:
+        return _admin_error("set_automation_rule_state", e)
+
+
+# ---------------------------------------------------------------------------
+# Filter (saved JQL search) tools.
+# ---------------------------------------------------------------------------
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Search Filters", "readOnlyHint": True},
+)
+async def search_filters(
+    ctx: Context,
+    filter_name: Annotated[
+        str | None, Field(description="(Optional) Filter name to search.", default=None)
+    ] = None,
+    substring_match: Annotated[
+        bool,
+        Field(
+            description=(
+                "Match anywhere in the name. Without this only names "
+                "starting with the text match."
+            ),
+            default=False,
+        ),
+    ] = False,
+    owner: Annotated[
+        str | None, Field(description="(Optional) Owner of the filters.", default=None)
+    ] = None,
+    order_by: Annotated[
+        str | None,
+        Field(
+            description="(Optional) Sort field, e.g. 'name' or '-name'.",
+            default=None,
+        ),
+    ] = None,
+    start_at: Annotated[int, Field(description="Starting index.", default=0, ge=0)] = 0,
+    max_results: Annotated[
+        int, Field(description="Maximum results.", default=50, ge=1, le=100)
+    ] = 50,
+) -> str:
+    """Search filters (saved JQL searches) by name.
+
+    Returns:
+        JSON with 'filters', 'total' and pagination info.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        result = jira.search_filters(
+            filter_name,
+            substring_match=substring_match,
+            owner=owner,
+            order_by=order_by,
+            start_at=start_at,
+            max_results=max_results,
+        )
+        return _admin_ok(
+            filters=result.get("values", []),
+            total=result.get("total"),
+            start_at=result.get("startAt"),
+            max_results=result.get("maxResults"),
+            is_last=result.get("isLast"),
+        )
+    except Exception as e:
+        return _admin_error("search_filters", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Filter", "readOnlyHint": True},
+)
+async def get_filter(
+    ctx: Context,
+    filter_id: Annotated[str, Field(description="Numeric filter ID.")],
+) -> str:
+    """Get a filter by ID, including its JQL and share permissions.
+
+    Returns:
+        JSON with the filter definition.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(filter=jira.get_filter(filter_id))
+    except Exception as e:
+        return _admin_error("get_filter", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Filter Columns", "readOnlyHint": True},
+)
+async def get_filter_columns(
+    ctx: Context,
+    filter_id: Annotated[str, Field(description="Numeric filter ID.")],
+) -> str:
+    """Get the issue navigator columns configured for a filter.
+
+    Returns:
+        JSON with the column list.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(columns=jira.get_filter_columns(filter_id))
+    except Exception as e:
+        return _admin_error("get_filter_columns", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Create Filter", "destructiveHint": True},
+)
+@check_write_access
+async def create_filter(
+    ctx: Context,
+    name: Annotated[str, Field(description="Filter name; must be unique.")],
+    jql: Annotated[str, Field(description="The JQL query for the filter.")],
+    description: Annotated[
+        str | None, Field(description="(Optional) Filter description.", default=None)
+    ] = None,
+    favourite: Annotated[
+        bool | None,
+        Field(description="(Optional) Select the filter as a favorite.", default=None),
+    ] = None,
+) -> str:
+    """Create a filter (saved JQL search) owned by the current user.
+
+    Returns:
+        JSON with the created filter, including its id.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        result = jira.create_filter(
+            name, jql, description=description, favourite=favourite
+        )
+        return _admin_ok(action="filter_created", filter=result)
+    except Exception as e:
+        return _admin_error("create_filter", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Update Filter", "destructiveHint": True},
+)
+@check_write_access
+async def update_filter(
+    ctx: Context,
+    filter_id: Annotated[str, Field(description="Numeric filter ID.")],
+    name: Annotated[str, Field(description="The filter's new name.")],
+    jql: Annotated[str, Field(description="The filter's new JQL query.")],
+    description: Annotated[
+        str | None, Field(description="(Optional) New description.", default=None)
+    ] = None,
+    favourite: Annotated[
+        bool | None,
+        Field(description="(Optional) Favorite state.", default=None),
+    ] = None,
+) -> str:
+    """Update a filter.
+
+    This is a full replacement: name and JQL must both be supplied even when
+    only one of them changes.
+
+    Returns:
+        JSON with the updated filter.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        result = jira.update_filter(
+            filter_id, name, jql, description=description, favourite=favourite
+        )
+        return _admin_ok(action="filter_updated", filter=result)
+    except Exception as e:
+        return _admin_error("update_filter", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Set Filter Columns", "destructiveHint": True},
+)
+@check_write_access
+async def set_filter_columns(
+    ctx: Context,
+    filter_id: Annotated[str, Field(description="Numeric filter ID.")],
+    columns: Annotated[
+        str,
+        Field(
+            description=(
+                "Comma-separated column value names, e.g. "
+                "'issuetype,issuekey,summary,status,assignee,updated'. "
+                "Replaces the whole column list."
+            )
+        ),
+    ],
+) -> str:
+    """Set the issue navigator columns for a filter.
+
+    Returns:
+        JSON indicating success or failure.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        column_list = _split_csv(columns)
+        jira.set_filter_columns(filter_id, column_list)
+        return _admin_ok(
+            action="filter_columns_set", filter_id=filter_id, columns=column_list
+        )
+    except Exception as e:
+        return _admin_error("set_filter_columns", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Add Filter Share Permission", "destructiveHint": True},
+)
+@check_write_access
+async def add_filter_share_permission(
+    ctx: Context,
+    filter_id: Annotated[str, Field(description="Numeric filter ID.")],
+    permission_type: Annotated[
+        str,
+        Field(
+            description=(
+                "Permission type: user, group, project, projectRole, global "
+                "or authenticated. 'global' and 'authenticated' override all "
+                "existing permissions."
+            ),
+            pattern="^(user|group|project|projectRole|global|authenticated)$",
+        ),
+    ],
+    account_id: Annotated[
+        str | None, Field(description="(Optional) For 'user'.", default=None)
+    ] = None,
+    group_name: Annotated[
+        str | None, Field(description="(Optional) For 'group'.", default=None)
+    ] = None,
+    group_id: Annotated[
+        str | None, Field(description="(Optional) For 'group'.", default=None)
+    ] = None,
+    project_id: Annotated[
+        str | None,
+        Field(description="(Optional) For 'project'/'projectRole'.", default=None),
+    ] = None,
+    project_role_id: Annotated[
+        str | None, Field(description="(Optional) For 'projectRole'.", default=None)
+    ] = None,
+    rights: Annotated[
+        int | None,
+        Field(description="(Optional) Bitmask: 1 = view, 2 = edit.", default=None),
+    ] = None,
+) -> str:
+    """Add a share permission to a filter.
+
+    Returns:
+        JSON with the created share permission.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        permission = jira.add_filter_share_permission(
+            filter_id,
+            permission_type,
+            account_id=account_id,
+            group_name=group_name,
+            group_id=group_id,
+            project_id=project_id,
+            project_role_id=project_role_id,
+            rights=rights,
+        )
+        return _admin_ok(action="share_permission_added", permission=permission)
+    except Exception as e:
+        return _admin_error("add_filter_share_permission", e)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard and gadget tools.
+# ---------------------------------------------------------------------------
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Search Dashboards", "readOnlyHint": True},
+)
+async def search_dashboards(
+    ctx: Context,
+    filter: Annotated[
+        str | None, Field(description="(Optional) Name substring.", default=None)
+    ] = None,
+    start_at: Annotated[int, Field(description="Starting index.", default=0, ge=0)] = 0,
+    max_results: Annotated[
+        int, Field(description="Maximum results.", default=50, ge=1, le=100)
+    ] = 50,
+) -> str:
+    """Search dashboards by name substring.
+
+    Returns:
+        JSON with 'dashboards' and pagination info.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        result = jira.search_dashboards(
+            filter, start_at=start_at, max_results=max_results
+        )
+        return _admin_ok(
+            dashboards=result.get("values", []),
+            total=result.get("total"),
+            start_at=result.get("startAt"),
+            max_results=result.get("maxResults"),
+            is_last=result.get("isLast"),
+        )
+    except Exception as e:
+        return _admin_error("search_dashboards", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Dashboard", "readOnlyHint": True},
+)
+async def get_dashboard(
+    ctx: Context,
+    dashboard_id: Annotated[str, Field(description="Numeric dashboard ID.")],
+) -> str:
+    """Get a dashboard's details.
+
+    Returns:
+        JSON with name, description, owner and permissions.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(dashboard=jira.get_dashboard(dashboard_id))
+    except Exception as e:
+        return _admin_error("get_dashboard", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Dashboard Gadgets", "readOnlyHint": True},
+)
+async def get_dashboard_gadgets(
+    ctx: Context,
+    dashboard_id: Annotated[str, Field(description="Numeric dashboard ID.")],
+) -> str:
+    """Get the gadgets on a dashboard.
+
+    Returns:
+        JSON with 'gadgets' (id, moduleKey/uri, title, position). The gadget
+        id is needed as item id for gadget configuration.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(gadgets=jira.get_dashboard_gadgets(dashboard_id))
+    except Exception as e:
+        return _admin_error("get_dashboard_gadgets", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Available Dashboard Gadgets", "readOnlyHint": True},
+)
+async def get_available_dashboard_gadgets(
+    ctx: Context,
+) -> str:
+    """List the gadget types that can be added to dashboards.
+
+    Returns:
+        JSON with 'gadgets' (uri or moduleKey, title).
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(gadgets=jira.get_available_dashboard_gadgets())
+    except Exception as e:
+        return _admin_error("get_available_dashboard_gadgets", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Gadget Config", "readOnlyHint": True},
+)
+async def get_gadget_config(
+    ctx: Context,
+    dashboard_id: Annotated[str, Field(description="Numeric dashboard ID.")],
+    item_id: Annotated[
+        str,
+        Field(
+            description=(
+                "Gadget ID from get_dashboard_gadgets (the gadget instance id)."
+            )
+        ),
+    ],
+) -> str:
+    """Get all stored configuration properties of a dashboard gadget.
+
+    Returns:
+        JSON with the properties. Filter Results gadgets store their
+        settings under 'config' (filterId, columnNames, num, ...).
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(config=jira.get_gadget_config(dashboard_id, item_id))
+    except Exception as e:
+        return _admin_error("get_gadget_config", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Create Dashboard", "destructiveHint": True},
+)
+@check_write_access
+async def create_dashboard(
+    ctx: Context,
+    name: Annotated[str, Field(description="Dashboard name.")],
+    description: Annotated[
+        str | None, Field(description="(Optional) Dashboard description.", default=None)
+    ] = None,
+    share_permissions: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description=(
+                "(Optional) Share permissions as JSON, e.g. "
+                '[{"type": "authenticated"}]. Empty (default) creates a '
+                "private dashboard."
+            ),
+            default=None,
+        ),
+    ] = None,
+    edit_permissions: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description=(
+                "(Optional) Edit permissions as JSON; defaults to the share "
+                "permissions."
+            ),
+            default=None,
+        ),
+    ] = None,
+) -> str:
+    """Create a dashboard owned by the current user.
+
+    Returns:
+        JSON with the created dashboard, including its id.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        result = jira.create_dashboard(
+            name,
+            description=description,
+            share_permissions=share_permissions,
+            edit_permissions=edit_permissions,
+        )
+        return _admin_ok(action="dashboard_created", dashboard=result)
+    except Exception as e:
+        return _admin_error("create_dashboard", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Add Dashboard Gadget", "destructiveHint": True},
+)
+@check_write_access
+async def add_gadget(
+    ctx: Context,
+    dashboard_id: Annotated[str, Field(description="Numeric dashboard ID.")],
+    uri: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Optional) URI of the gadget type, e.g. "
+                "'rest/gadgets/1.0/g/com.atlassian.jira.gadgets:filter-results-gadget/gadgets/filter-results-gadget.xml'. "
+                "Exactly one of uri or module_key."
+            ),
+            default=None,
+        ),
+    ] = None,
+    module_key: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Optional) Module key of the gadget type; alternative to uri."
+            ),
+            default=None,
+        ),
+    ] = None,
+    title: Annotated[
+        str | None,
+        Field(
+            description="(Optional) Gadget title; defaults to the type's.", default=None
+        ),
+    ] = None,
+    color: Annotated[
+        str | None, Field(description="(Optional) Gadget color.", default=None)
+    ] = None,
+    column: Annotated[
+        int | None,
+        Field(description="(Optional) 0-based column position.", default=None),
+    ] = None,
+    row: Annotated[
+        int | None,
+        Field(
+            description=(
+                "(Optional) Row position; other gadgets in the column move down."
+            ),
+            default=None,
+        ),
+    ] = None,
+) -> str:
+    """Add a gadget to a dashboard.
+
+    Use get_available_dashboard_gadgets to find the uri/module_key of gadget
+    types.
+
+    Returns:
+        JSON with the created gadget, including its id.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        gadget = jira.add_gadget(
+            dashboard_id,
+            uri=uri,
+            module_key=module_key,
+            title=title,
+            color=color,
+            column=column,
+            row=row,
+        )
+        return _admin_ok(action="gadget_added", gadget=gadget)
+    except Exception as e:
+        return _admin_error("add_gadget", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Update Dashboard Gadget", "destructiveHint": True},
+)
+@check_write_access
+async def update_gadget(
+    ctx: Context,
+    dashboard_id: Annotated[str, Field(description="Numeric dashboard ID.")],
+    gadget_id: Annotated[str, Field(description="The gadget's numeric ID.")],
+    title: Annotated[
+        str | None, Field(description="(Optional) New title.", default=None)
+    ] = None,
+    color: Annotated[
+        str | None, Field(description="(Optional) New color.", default=None)
+    ] = None,
+    column: Annotated[
+        int | None, Field(description="(Optional) New column position.", default=None)
+    ] = None,
+    row: Annotated[
+        int | None, Field(description="(Optional) New row position.", default=None)
+    ] = None,
+) -> str:
+    """Update a dashboard gadget's title, color and/or position.
+
+    Returns:
+        JSON indicating success or failure.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        jira.update_gadget(
+            dashboard_id,
+            gadget_id,
+            title=title,
+            color=color,
+            column=column,
+            row=row,
+        )
+        return _admin_ok(
+            action="gadget_updated", dashboard_id=dashboard_id, gadget_id=gadget_id
+        )
+    except Exception as e:
+        return _admin_error("update_gadget", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Set Gadget Config", "destructiveHint": True},
+)
+@check_write_access
+async def set_gadget_config(
+    ctx: Context,
+    dashboard_id: Annotated[str, Field(description="Numeric dashboard ID.")],
+    item_id: Annotated[
+        str,
+        Field(
+            description=(
+                "Gadget ID from get_dashboard_gadgets (the gadget instance id)."
+            )
+        ),
+    ],
+    config: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "The configuration value to store as JSON, e.g. "
+                '{"filterId": "12345", "isConfigured": "true", '
+                '"num": "50"} for a Filter Results gadget. Jira expects '
+                "the values as strings."
+            )
+        ),
+    ],
+    property_key: Annotated[
+        str,
+        Field(
+            description="Property key under which the config is stored.",
+            default="config",
+        ),
+    ] = "config",
+) -> str:
+    """Store a dashboard gadget's configuration.
+
+    Inspect an existing gadget with get_gadget_config for the exact keys a
+    gadget type uses.
+
+    Returns:
+        JSON indicating success or failure.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        jira.set_gadget_config(dashboard_id, item_id, config, property_key=property_key)
+        return _admin_ok(
+            action="gadget_config_set",
+            dashboard_id=dashboard_id,
+            item_id=item_id,
+            property_key=property_key,
+        )
+    except Exception as e:
+        return _admin_error("set_gadget_config", e)

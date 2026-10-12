@@ -29,6 +29,9 @@ from .screens import ScreensMixin
 from .security import SecurityMixin
 from .statuses import StatusesMixin
 from .workflows import WorkflowsMixin
+from .automation import AutomationMixin
+from .filters import FiltersMixin
+from .dashboards import DashboardsMixin
 
 
 class JiraFetcher(
@@ -51,6 +54,9 @@ class JiraFetcher(
     SecurityMixin,
     StatusesMixin,
     WorkflowsMixin,
+    AutomationMixin,
+    FiltersMixin,
+    DashboardsMixin,
 ):
     """
     The main Jira client class providing access to all Jira operations.
@@ -72,6 +78,11 @@ class JiraFetcher(
     - LinksMixin: Issue link operations
     - OrgAdminMixin: Organization admin operations (requires JIRA_ORG_ID + JIRA_ORG_KEY)
     - ScreensMixin: Screen, field context and field configuration admin operations
+    - StatusesMixin: Status admin operations
+    - WorkflowsMixin: Workflow admin operations
+    - AutomationMixin: Automation rule management operations
+    - FiltersMixin: Filter (saved JQL search) operations
+    - DashboardsMixin: Dashboard and gadget operations
 
     The class structure is designed to maintain backward compatibility while
     improving code organization and maintainability.
