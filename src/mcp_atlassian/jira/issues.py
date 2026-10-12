@@ -789,6 +789,49 @@ class IssuesMixin(
             # Server/DC might use name instead of accountId
             fields["assignee"] = {"name": assignee}
 
+    def _format_component(self, comp: Any) -> dict[str, str] | None:
+        """
+        Format a component for Jira API.
+
+        Args:
+            comp: Component as string ID, int ID, or dict
+
+        Returns:
+            Formatted component dict with "id" key, or None if invalid
+        """
+        if isinstance(comp, str) and comp.strip():
+            # String ID or name
+            if comp.strip().isdigit():
+                # Numeric string - treat as ID
+                return {"id": comp.strip()}
+            else:
+                # Non-numeric string - treat as name (less reliable)
+                logger.warning(
+                    f"Component specified by name '{comp}'. Component IDs are more reliable. "
+                    "If the update fails, use component ID instead."
+                )
+                return {"name": comp.strip()}
+        elif isinstance(comp, int):
+            # Integer ID
+            return {"id": str(comp)}
+        elif isinstance(comp, dict):
+            if "id" in comp:
+                # Already has ID - use it
+                return {"id": str(comp["id"])}
+            elif "name" in comp:
+                # Has name - less reliable
+                logger.warning(
+                    f"Component specified by name '{comp['name']}'. Component IDs are more reliable. "
+                    "If the update fails, use component ID instead."
+                )
+                return {"name": comp["name"]}
+            else:
+                logger.warning(f"Component dict missing 'id' or 'name': {comp}")
+                return None
+        else:
+            logger.warning(f"Invalid component format: {comp}")
+            return None
+
     def _process_additional_fields(
         self, fields: dict[str, Any], kwargs: dict[str, Any]
     ) -> None:
@@ -997,6 +1040,11 @@ class IssuesMixin(
                 - attachments: List of file paths to upload as attachments
                 - status: New status for the issue (handled via transitions)
                 - assignee: New assignee for the issue
+                - components: List of component dicts with IDs, or a dict with operations
+                  * Simple list: [{"id": "10911"}] - replaces all components (SET)
+                  * With operations: {"add": [{"id": "10911"}], "remove": [{"id": "10912"}]}
+                - add_components: List of component IDs to add
+                - remove_components: List of component IDs to remove
 
         Returns:
             JiraIssue model representing the updated issue
@@ -1010,6 +1058,7 @@ class IssuesMixin(
                 raise ValueError("Issue key is required")
 
             update_fields = fields or {}
+            update_operations: dict[str, list[dict]] = {}  # For ADD/REMOVE operations
             attachments_result = None
 
             # Convert description from Markdown to Jira format if present
@@ -1044,6 +1093,58 @@ class IssuesMixin(
                             self._add_assignee_to_fields(update_fields, account_id)
                         except ValueError as e:
                             logger.warning(f"Could not update assignee: {str(e)}")
+                elif key == "components":
+                    # Handle components updates - supports SET, ADD, REMOVE operations
+                    # Jira API uses component IDs for reliability
+                    if value is None or value == "":
+                        # Clear all components (SET to empty)
+                        update_fields["components"] = []
+                    elif isinstance(value, dict) and ("add" in value or "remove" in value):
+                        # Operations dict: {"add": [...], "remove": [...]}
+                        if "components" not in update_operations:
+                            update_operations["components"] = []
+
+                        if "add" in value and value["add"]:
+                            for comp in value["add"]:
+                                formatted_comp = self._format_component(comp)
+                                if formatted_comp:
+                                    update_operations["components"].append({"add": formatted_comp})
+
+                        if "remove" in value and value["remove"]:
+                            for comp in value["remove"]:
+                                formatted_comp = self._format_component(comp)
+                                if formatted_comp:
+                                    update_operations["components"].append({"remove": formatted_comp})
+                    elif isinstance(value, list):
+                        # Simple list - SET operation (replace all components)
+                        formatted_components = []
+                        for comp in value:
+                            formatted_comp = self._format_component(comp)
+                            if formatted_comp:
+                                formatted_components.append(formatted_comp)
+                        update_fields["components"] = formatted_components
+                    else:
+                        logger.warning(f"Invalid components value: {value}. Expected list or dict with 'add'/'remove'.")
+
+                elif key == "add_components":
+                    # Convenience parameter to add components
+                    if "components" not in update_operations:
+                        update_operations["components"] = []
+                    if isinstance(value, list):
+                        for comp in value:
+                            formatted_comp = self._format_component(comp)
+                            if formatted_comp:
+                                update_operations["components"].append({"add": formatted_comp})
+
+                elif key == "remove_components":
+                    # Convenience parameter to remove components
+                    if "components" not in update_operations:
+                        update_operations["components"] = []
+                    if isinstance(value, list):
+                        for comp in value:
+                            formatted_comp = self._format_component(comp)
+                            if formatted_comp:
+                                update_operations["components"].append({"remove": formatted_comp})
                 elif key == "description":
                     # Handle description with markdown conversion
                     update_fields["description"] = self._markdown_to_jira(value)
@@ -1053,10 +1154,16 @@ class IssuesMixin(
                     field_kwargs = {key: value}
                     self._process_additional_fields(update_fields, field_kwargs)
 
-            # Update the issue fields
-            if update_fields:
+            # Update the issue fields and operations
+            if update_fields or update_operations:
+                update_payload: dict[str, Any] = {}
+                if update_fields:
+                    update_payload["fields"] = update_fields
+                if update_operations:
+                    update_payload["update"] = update_operations
+
                 self.jira.update_issue(
-                    issue_key=issue_key, update={"fields": update_fields}
+                    issue_key=issue_key, update=update_payload
                 )
 
             # Handle attachments if provided

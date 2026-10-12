@@ -24,6 +24,9 @@ from .users import UsersMixin
 from .worklog import WorklogMixin
 from .boards import BoardsMixin
 from .attachments import AttachmentsMixin
+from .org_admin import OrgAdminMixin
+from .screens import ScreensMixin
+from .security import SecurityMixin
 
 
 class JiraFetcher(
@@ -41,6 +44,9 @@ class JiraFetcher(
     SprintsMixin,
     AttachmentsMixin,
     LinksMixin,
+    OrgAdminMixin,
+    ScreensMixin,
+    SecurityMixin,
 ):
     """
     The main Jira client class providing access to all Jira operations.
@@ -60,6 +66,8 @@ class JiraFetcher(
     - SprintsMixin: Sprint operations
     - AttachmentsMixin: Attachment download operations
     - LinksMixin: Issue link operations
+    - OrgAdminMixin: Organization admin operations (requires JIRA_ORG_ID + JIRA_ORG_KEY)
+    - ScreensMixin: Screen, field context and field configuration admin operations
 
     The class structure is designed to maintain backward compatibility while
     improving code organization and maintainability.

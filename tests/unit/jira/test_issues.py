@@ -714,6 +714,203 @@ class TestIssuesMixin:
         assert not issues_mixin._get_account_id.called
         assert document.key == "TEST-123"
 
+    def test_update_issue_with_components(self, issues_mixin: IssuesMixin):
+        """Test updating an issue with components using string names."""
+        issue_data = {
+            "id": "12345",
+            "key": "TEST-123",
+            "fields": {
+                "summary": "Test Issue",
+                "description": "This is a test",
+                "status": {"name": "Open"},
+                "issuetype": {"name": "Bug"},
+                "components": [{"name": "Frontend"}, {"name": "Backend"}],
+            },
+        }
+        issues_mixin.jira.get_issue.return_value = issue_data
+        issues_mixin.jira.issue_get_comments.return_value = {"comments": []}
+
+        # Test updating with a list of component names (strings)
+        document = issues_mixin.update_issue(
+            issue_key="TEST-123", components=["Frontend", "Backend"]
+        )
+
+        # Verify the API call includes properly formatted components
+        issues_mixin.jira.update_issue.assert_called_once_with(
+            issue_key="TEST-123",
+            update={
+                "fields": {
+                    "components": [{"name": "Frontend"}, {"name": "Backend"}]
+                }
+            },
+        )
+        assert document.key == "TEST-123"
+
+    def test_update_issue_with_component_ids(self, issues_mixin: IssuesMixin):
+        """Test updating an issue with components using component IDs."""
+        issue_data = {
+            "id": "12345",
+            "key": "TEST-123",
+            "fields": {
+                "summary": "Test Issue",
+                "description": "This is a test",
+                "status": {"name": "Open"},
+                "issuetype": {"name": "Bug"},
+                "components": [{"id": "10911", "name": "Frontend"}],
+            },
+        }
+        issues_mixin.jira.get_issue.return_value = issue_data
+        issues_mixin.jira.issue_get_comments.return_value = {"comments": []}
+
+        # Test updating with component objects containing IDs
+        document = issues_mixin.update_issue(
+            issue_key="TEST-123",
+            components=[{"id": "10911"}, {"id": "10912"}]
+        )
+
+        # Verify the API call includes component dicts with IDs
+        issues_mixin.jira.update_issue.assert_called_once_with(
+            issue_key="TEST-123",
+            update={
+                "fields": {
+                    "components": [{"id": "10911"}, {"id": "10912"}]
+                }
+            },
+        )
+        assert document.key == "TEST-123"
+
+    def test_update_issue_clear_components(self, issues_mixin: IssuesMixin):
+        """Test clearing components from an issue."""
+        issue_data = {
+            "id": "12345",
+            "key": "TEST-123",
+            "fields": {
+                "summary": "Test Issue",
+                "description": "This is a test",
+                "status": {"name": "Open"},
+                "issuetype": {"name": "Bug"},
+                "components": [],
+            },
+        }
+        issues_mixin.jira.get_issue.return_value = issue_data
+        issues_mixin.jira.issue_get_comments.return_value = {"comments": []}
+
+        # Test clearing components with empty list
+        document = issues_mixin.update_issue(issue_key="TEST-123", components=[])
+
+        # Verify the API call clears components
+        issues_mixin.jira.update_issue.assert_called_once_with(
+            issue_key="TEST-123", update={"fields": {"components": []}}
+        )
+        assert document.key == "TEST-123"
+
+    def test_update_issue_add_components(self, issues_mixin: IssuesMixin):
+        """Test adding components to an issue."""
+        issue_data = {
+            "id": "12345",
+            "key": "TEST-123",
+            "fields": {
+                "summary": "Test Issue",
+                "description": "This is a test",
+                "status": {"name": "Open"},
+                "issuetype": {"name": "Bug"},
+                "components": [{"id": "10911", "name": "Frontend"}],
+            },
+        }
+        issues_mixin.jira.get_issue.return_value = issue_data
+        issues_mixin.jira.issue_get_comments.return_value = {"comments": []}
+
+        # Test adding components using add_components parameter
+        document = issues_mixin.update_issue(
+            issue_key="TEST-123",
+            add_components=[{"id": "10912"}, {"id": "10913"}]
+        )
+
+        # Verify the API call uses ADD operation
+        issues_mixin.jira.update_issue.assert_called_once_with(
+            issue_key="TEST-123",
+            update={
+                "update": {
+                    "components": [
+                        {"add": {"id": "10912"}},
+                        {"add": {"id": "10913"}}
+                    ]
+                }
+            }
+        )
+        assert document.key == "TEST-123"
+
+    def test_update_issue_remove_components(self, issues_mixin: IssuesMixin):
+        """Test removing components from an issue."""
+        issue_data = {
+            "id": "12345",
+            "key": "TEST-123",
+            "fields": {
+                "summary": "Test Issue",
+                "description": "This is a test",
+                "status": {"name": "Open"},
+                "issuetype": {"name": "Bug"},
+                "components": [{"id": "10911", "name": "Frontend"}],
+            },
+        }
+        issues_mixin.jira.get_issue.return_value = issue_data
+        issues_mixin.jira.issue_get_comments.return_value = {"comments": []}
+
+        # Test removing components using remove_components parameter
+        document = issues_mixin.update_issue(
+            issue_key="TEST-123",
+            remove_components=[{"id": "10911"}]
+        )
+
+        # Verify the API call uses REMOVE operation
+        issues_mixin.jira.update_issue.assert_called_once_with(
+            issue_key="TEST-123",
+            update={
+                "update": {
+                    "components": [
+                        {"remove": {"id": "10911"}}
+                    ]
+                }
+            }
+        )
+        assert document.key == "TEST-123"
+
+    def test_update_issue_add_and_remove_components(self, issues_mixin: IssuesMixin):
+        """Test adding and removing components in one operation."""
+        issue_data = {
+            "id": "12345",
+            "key": "TEST-123",
+            "fields": {
+                "summary": "Test Issue",
+                "description": "This is a test",
+                "status": {"name": "Open"},
+                "issuetype": {"name": "Bug"},
+                "components": [{"id": "10911", "name": "Frontend"}],
+            },
+        }
+        issues_mixin.jira.get_issue.return_value = issue_data
+        issues_mixin.jira.issue_get_comments.return_value = {"comments": []}
+
+        # Test using components dict with add and remove
+        document = issues_mixin.update_issue(
+            issue_key="TEST-123",
+            components={"add": [{"id": "10912"}], "remove": [{"id": "10911"}]}
+        )
+
+        # Verify the API call uses both ADD and REMOVE operations
+        issues_mixin.jira.update_issue.assert_called_once_with(
+            issue_key="TEST-123",
+            update={
+                "update": {
+                    "components": [
+                        {"add": {"id": "10912"}},
+                        {"remove": {"id": "10911"}}
+                    ]
+                }
+            }
+        )
+        assert document.key == "TEST-123"
+
     def test_delete_issue(self, issues_mixin: IssuesMixin):
         """Test deleting an issue."""
         # Call the method
