@@ -14,9 +14,7 @@ logger = logging.getLogger("mcp-jira")
 class SecurityMixin(JiraClient):
     """Mixin for Jira issue security scheme operations."""
 
-    def get_security_level_members(
-        self, level_id: str | int
-    ) -> dict[str, Any]:
+    def get_security_level_members(self, level_id: str | int) -> dict[str, Any]:
         """
         Get members (groups, users, roles) that have access to a security level.
 
@@ -63,11 +61,16 @@ class SecurityMixin(JiraClient):
             }
 
         except HTTPError as http_err:
-            if http_err.response is not None and http_err.response.status_code in (401, 403):
+            if http_err.response is not None and http_err.response.status_code in (
+                401,
+                403,
+            ):
                 raise MCPAtlassianAuthenticationError(
                     f"Authentication/permission error fetching security level members: {http_err}"
                 ) from http_err
             raise
         except Exception as e:
-            logger.error(f"Error fetching security level members for level {level_id}: {e}")
+            logger.error(
+                f"Error fetching security level members for level {level_id}: {e}"
+            )
             raise

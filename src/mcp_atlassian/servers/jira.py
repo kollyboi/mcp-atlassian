@@ -1844,15 +1844,23 @@ async def get_org_user_statistics(ctx: Context) -> str:
     jira = await get_jira_fetcher(ctx)
     try:
         stats = jira.get_org_user_statistics()
-        return json.dumps({"success": True, "statistics": stats}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": True, "statistics": stats}, indent=2, ensure_ascii=False
+        )
     except ValueError as e:
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
     except HTTPError as e:
         logger.error(f"HTTP error in get_org_user_statistics: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+        )
     except Exception as e:
         logger.error(f"Unexpected error in get_org_user_statistics: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
 
 
 @jira_mcp.tool(
@@ -1968,10 +1976,12 @@ async def list_org_users(
         users = jira.fetch_org_users_v2(
             status_filter=status_filter or None,
             claim_status=claim_status or None,
-            account_ids=[x.strip() for x in account_ids.split(",") if x.strip()] or None,
+            account_ids=[x.strip() for x in account_ids.split(",") if x.strip()]
+            or None,
             group_ids=[x.strip() for x in group_ids.split(",") if x.strip()] or None,
             role_ids=[x.strip() for x in role_ids.split(",") if x.strip()] or None,
-            email_domains=[x.strip() for x in email_domains.split(",") if x.strip()] or None,
+            email_domains=[x.strip() for x in email_domains.split(",") if x.strip()]
+            or None,
             search_term=search_term or None,
             account_status=account_status or None,
             membership_status=membership_status or None,
@@ -1983,13 +1993,19 @@ async def list_org_users(
             ensure_ascii=False,
         )
     except ValueError as e:
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
     except HTTPError as e:
         logger.error(f"HTTP error in list_org_users: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+        )
     except Exception as e:
         logger.error(f"Unexpected error in list_org_users: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
 
 
 @jira_mcp.tool(
@@ -2072,19 +2088,28 @@ async def count_org_users(
             claim_status=claim_status or None,
             group_ids=[x.strip() for x in group_ids.split(",") if x.strip()] or None,
             role_ids=[x.strip() for x in role_ids.split(",") if x.strip()] or None,
-            email_domains=[x.strip() for x in email_domains.split(",") if x.strip()] or None,
+            email_domains=[x.strip() for x in email_domains.split(",") if x.strip()]
+            or None,
             search_term=search_term or None,
             mfa_enabled=mfa,
         )
-        return json.dumps({"success": True, "count": count}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": True, "count": count}, indent=2, ensure_ascii=False
+        )
     except ValueError as e:
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
     except HTTPError as e:
         logger.error(f"HTTP error in count_org_users: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+        )
     except Exception as e:
         logger.error(f"Unexpected error in count_org_users: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
 
 
 @jira_mcp.tool(
@@ -2112,13 +2137,23 @@ async def get_org_user_details(
         user = jira.get_org_user_details(account_id)
         return json.dumps({"success": True, "user": user}, indent=2, ensure_ascii=False)
     except ValueError as e:
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
     except HTTPError as e:
-        logger.error(f"HTTP error fetching user details {account_id}: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False)
+        logger.error(
+            f"HTTP error fetching user details {account_id}: {e}", exc_info=True
+        )
+        return json.dumps(
+            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+        )
     except Exception as e:
-        logger.error(f"Unexpected error fetching user details {account_id}: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        logger.error(
+            f"Unexpected error fetching user details {account_id}: {e}", exc_info=True
+        )
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
 
 
 @jira_mcp.tool(
@@ -2161,7 +2196,8 @@ async def get_org_user_role_assignments(
     try:
         assignments = jira.get_org_user_role_assignments(
             account_id=account_id,
-            resource_ids=[x.strip() for x in resource_ids.split(",") if x.strip()] or None,
+            resource_ids=[x.strip() for x in resource_ids.split(",") if x.strip()]
+            or None,
             role_ids=[x.strip() for x in role_ids.split(",") if x.strip()] or None,
         )
         return json.dumps(
@@ -2170,13 +2206,24 @@ async def get_org_user_role_assignments(
             ensure_ascii=False,
         )
     except ValueError as e:
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
     except HTTPError as e:
-        logger.error(f"HTTP error fetching role assignments for {account_id}: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False)
+        logger.error(
+            f"HTTP error fetching role assignments for {account_id}: {e}", exc_info=True
+        )
+        return json.dumps(
+            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+        )
     except Exception as e:
-        logger.error(f"Unexpected error fetching role assignments for {account_id}: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        logger.error(
+            f"Unexpected error fetching role assignments for {account_id}: {e}",
+            exc_info=True,
+        )
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
 
 
 @jira_mcp.tool(
@@ -2256,13 +2303,19 @@ async def get_inactive_org_users(
             ensure_ascii=False,
         )
     except ValueError as e:
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
     except HTTPError as e:
         logger.error(f"HTTP error in get_inactive_org_users: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+        )
     except Exception as e:
         logger.error(f"Unexpected error in get_inactive_org_users: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
 
 
 @jira_mcp.tool(
@@ -2294,13 +2347,21 @@ async def suspend_org_user(
             ensure_ascii=False,
         )
     except ValueError as e:
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
     except HTTPError as e:
         logger.error(f"HTTP error suspending user {account_id}: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+        )
     except Exception as e:
-        logger.error(f"Unexpected error suspending user {account_id}: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        logger.error(
+            f"Unexpected error suspending user {account_id}: {e}", exc_info=True
+        )
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
 
 
 @jira_mcp.tool(
@@ -2332,13 +2393,21 @@ async def reactivate_org_user(
             ensure_ascii=False,
         )
     except ValueError as e:
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
     except HTTPError as e:
         logger.error(f"HTTP error reactivating user {account_id}: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+        )
     except Exception as e:
-        logger.error(f"Unexpected error reactivating user {account_id}: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        logger.error(
+            f"Unexpected error reactivating user {account_id}: {e}", exc_info=True
+        )
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
 
 
 @jira_mcp.tool(
@@ -2367,18 +2436,33 @@ async def remove_org_user_from_directory(
     try:
         jira.remove_org_user_from_directory(account_id)
         return json.dumps(
-            {"success": True, "account_id": account_id, "action": "removed_from_directory"},
+            {
+                "success": True,
+                "account_id": account_id,
+                "action": "removed_from_directory",
+            },
             indent=2,
             ensure_ascii=False,
         )
     except ValueError as e:
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
     except HTTPError as e:
-        logger.error(f"HTTP error removing user {account_id} from directory: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False)
+        logger.error(
+            f"HTTP error removing user {account_id} from directory: {e}", exc_info=True
+        )
+        return json.dumps(
+            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+        )
     except Exception as e:
-        logger.error(f"Unexpected error removing user {account_id} from directory: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        logger.error(
+            f"Unexpected error removing user {account_id} from directory: {e}",
+            exc_info=True,
+        )
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
 
 
 @jira_mcp.tool(
@@ -2412,13 +2496,25 @@ async def get_security_level_members(
         result = jira.get_security_level_members(level_id)
         return json.dumps(result, indent=2, ensure_ascii=False)
     except MCPAtlassianAuthenticationError as e:
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
     except HTTPError as e:
-        logger.error(f"HTTP error fetching security level members for level {level_id}: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False)
+        logger.error(
+            f"HTTP error fetching security level members for level {level_id}: {e}",
+            exc_info=True,
+        )
+        return json.dumps(
+            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+        )
     except Exception as e:
-        logger.error(f"Unexpected error fetching security level members for level {level_id}: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)}, indent=2, ensure_ascii=False)
+        logger.error(
+            f"Unexpected error fetching security level members for level {level_id}: {e}",
+            exc_info=True,
+        )
+        return json.dumps(
+            {"success": False, "error": str(e)}, indent=2, ensure_ascii=False
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2449,7 +2545,9 @@ def _admin_error(tool: str, e: Exception) -> str:
     else:
         message = str(e)
         logger.error(f"Unexpected error in {tool}: {e}", exc_info=True)
-    return json.dumps({"success": False, "error": message}, indent=2, ensure_ascii=False)
+    return json.dumps(
+        {"success": False, "error": message}, indent=2, ensure_ascii=False
+    )
 
 
 def _admin_ok(**data: Any) -> str:

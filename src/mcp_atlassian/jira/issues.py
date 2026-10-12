@@ -1099,7 +1099,9 @@ class IssuesMixin(
                     if value is None or value == "":
                         # Clear all components (SET to empty)
                         update_fields["components"] = []
-                    elif isinstance(value, dict) and ("add" in value or "remove" in value):
+                    elif isinstance(value, dict) and (
+                        "add" in value or "remove" in value
+                    ):
                         # Operations dict: {"add": [...], "remove": [...]}
                         if "components" not in update_operations:
                             update_operations["components"] = []
@@ -1108,13 +1110,17 @@ class IssuesMixin(
                             for comp in value["add"]:
                                 formatted_comp = self._format_component(comp)
                                 if formatted_comp:
-                                    update_operations["components"].append({"add": formatted_comp})
+                                    update_operations["components"].append(
+                                        {"add": formatted_comp}
+                                    )
 
                         if "remove" in value and value["remove"]:
                             for comp in value["remove"]:
                                 formatted_comp = self._format_component(comp)
                                 if formatted_comp:
-                                    update_operations["components"].append({"remove": formatted_comp})
+                                    update_operations["components"].append(
+                                        {"remove": formatted_comp}
+                                    )
                     elif isinstance(value, list):
                         # Simple list - SET operation (replace all components)
                         formatted_components = []
@@ -1124,7 +1130,9 @@ class IssuesMixin(
                                 formatted_components.append(formatted_comp)
                         update_fields["components"] = formatted_components
                     else:
-                        logger.warning(f"Invalid components value: {value}. Expected list or dict with 'add'/'remove'.")
+                        logger.warning(
+                            f"Invalid components value: {value}. Expected list or dict with 'add'/'remove'."
+                        )
 
                 elif key == "add_components":
                     # Convenience parameter to add components
@@ -1134,7 +1142,9 @@ class IssuesMixin(
                         for comp in value:
                             formatted_comp = self._format_component(comp)
                             if formatted_comp:
-                                update_operations["components"].append({"add": formatted_comp})
+                                update_operations["components"].append(
+                                    {"add": formatted_comp}
+                                )
 
                 elif key == "remove_components":
                     # Convenience parameter to remove components
@@ -1144,7 +1154,9 @@ class IssuesMixin(
                         for comp in value:
                             formatted_comp = self._format_component(comp)
                             if formatted_comp:
-                                update_operations["components"].append({"remove": formatted_comp})
+                                update_operations["components"].append(
+                                    {"remove": formatted_comp}
+                                )
                 elif key == "description":
                     # Handle description with markdown conversion
                     update_fields["description"] = self._markdown_to_jira(value)
@@ -1162,9 +1174,7 @@ class IssuesMixin(
                 if update_operations:
                     update_payload["update"] = update_operations
 
-                self.jira.update_issue(
-                    issue_key=issue_key, update=update_payload
-                )
+                self.jira.update_issue(issue_key=issue_key, update=update_payload)
 
             # Handle attachments if provided
             if "attachments" in kwargs and kwargs["attachments"]:

@@ -212,14 +212,18 @@ class TestCountOrgUsers:
 
     def test_url_contains_count_endpoint(self, mixin):
         with patch.dict(os.environ, CREDS_ENV):
-            with patch("requests.get", return_value=_mock_response({"count": 0})) as mock_get:
+            with patch(
+                "requests.get", return_value=_mock_response({"count": 0})
+            ) as mock_get:
                 mixin.count_org_users(status_filter="active")
         url = mock_get.call_args[0][0]
         assert url.endswith("/users/count")
 
     def test_no_limit_in_params(self, mixin):
         with patch.dict(os.environ, CREDS_ENV):
-            with patch("requests.get", return_value=_mock_response({"count": 0})) as mock_get:
+            with patch(
+                "requests.get", return_value=_mock_response({"count": 0})
+            ) as mock_get:
                 mixin.count_org_users()
         params = mock_get.call_args[1]["params"]
         assert "limit" not in params
@@ -236,7 +240,9 @@ class TestGetOrgUserDetails:
     def test_url_contains_account_id(self, mixin):
         raw = _user("u99")
         with patch.dict(os.environ, CREDS_ENV):
-            with patch("requests.get", return_value=_mock_response({"data": raw})) as mock_get:
+            with patch(
+                "requests.get", return_value=_mock_response({"data": raw})
+            ) as mock_get:
                 mixin.get_org_user_details("u99")
         url = mock_get.call_args[0][0]
         assert "u99" in url
@@ -250,7 +256,10 @@ class TestGetOrgUserDetails:
 
 class TestGetOrgUserRoleAssignments:
     def test_returns_assignments(self, mixin):
-        assignment = {"resourceId": "ari:cloud:jira::site/1", "roles": ["atlassian/admin"]}
+        assignment = {
+            "resourceId": "ari:cloud:jira::site/1",
+            "roles": ["atlassian/admin"],
+        }
         page = {"data": [assignment], "links": {}}
         with patch.dict(os.environ, CREDS_ENV):
             with patch("requests.get", return_value=_mock_response(page)):
@@ -274,12 +283,14 @@ class TestGetOrgUserRoleAssignments:
 class TestGetOrgUserStatistics:
     def test_uses_stats_endpoint(self, mixin):
         dirs_resp = _mock_response({"data": [{"directoryId": DIR}]})
-        stats_resp = _mock_response({
-            "accountStatus": [
-                {"status": "active", "count": 10},
-                {"status": "inactive", "count": 2},
-            ]
-        })
+        stats_resp = _mock_response(
+            {
+                "accountStatus": [
+                    {"status": "active", "count": 10},
+                    {"status": "inactive", "count": 2},
+                ]
+            }
+        )
         with patch.dict(os.environ, CREDS_ENV):
             with patch("requests.get", side_effect=[dirs_resp, stats_resp]):
                 result = mixin.get_org_user_statistics()
@@ -290,10 +301,19 @@ class TestGetOrgUserStatistics:
     def test_fallback_on_404(self, mixin):
         dirs_resp = _mock_response({"data": [{"directoryId": DIR}]})
         stats_404 = _mock_response({}, 404)
-        users_resp = _mock_response({"data": [
-            {**_user("u1"), "status": "active", "claimStatus": "managed"},
-            {**_user("u2", status="suspended"), "status": "suspended", "claimStatus": "unmanaged"},
-        ], "links": {}})
+        users_resp = _mock_response(
+            {
+                "data": [
+                    {**_user("u1"), "status": "active", "claimStatus": "managed"},
+                    {
+                        **_user("u2", status="suspended"),
+                        "status": "suspended",
+                        "claimStatus": "unmanaged",
+                    },
+                ],
+                "links": {},
+            }
+        )
         with patch.dict(os.environ, CREDS_ENV):
             with patch("requests.get", side_effect=[dirs_resp, stats_404, users_resp]):
                 result = mixin.get_org_user_statistics()
@@ -347,7 +367,9 @@ class TestRemoveOrgUser:
 
 
 class TestGetInactiveUsers:
-    def _v1_user(self, account_id, account_type="atlassian", last_ts="2025-01-01T00:00:00Z"):
+    def _v1_user(
+        self, account_id, account_type="atlassian", last_ts="2025-01-01T00:00:00Z"
+    ):
         return {
             "accountId": account_id,
             "accountType": account_type,
@@ -363,7 +385,10 @@ class TestGetInactiveUsers:
 
     def test_returns_inactive_human_users(self, mixin):
         v2_page = {"data": [_user("u1", "atlassian")], "links": {}}
-        v1_data = {"data": [self._v1_user("u1", last_ts="2020-01-01T00:00:00Z")], "links": {}}
+        v1_data = {
+            "data": [self._v1_user("u1", last_ts="2020-01-01T00:00:00Z")],
+            "links": {},
+        }
 
         with patch.dict(os.environ, CREDS_ENV):
             with patch("requests.get", return_value=_mock_response(v2_page)):
@@ -376,7 +401,10 @@ class TestGetInactiveUsers:
 
     def test_filters_non_atlassian_account_type(self, mixin):
         v2_page = {"data": [_user("u1", "customer")], "links": {}}
-        v1_data = {"data": [self._v1_user("u1", "customer", "2020-01-01T00:00:00Z")], "links": {}}
+        v1_data = {
+            "data": [self._v1_user("u1", "customer", "2020-01-01T00:00:00Z")],
+            "links": {},
+        }
 
         with patch.dict(os.environ, CREDS_ENV):
             with patch("requests.get", return_value=_mock_response(v2_page)):
@@ -387,31 +415,41 @@ class TestGetInactiveUsers:
 
     def test_excludes_account_ids(self, mixin):
         v2_page = {"data": [_user("u1"), _user("u2")], "links": {}}
-        v1_data = {"data": [
-            self._v1_user("u1", last_ts="2020-01-01T00:00:00Z"),
-            self._v1_user("u2", last_ts="2020-01-01T00:00:00Z"),
-        ], "links": {}}
+        v1_data = {
+            "data": [
+                self._v1_user("u1", last_ts="2020-01-01T00:00:00Z"),
+                self._v1_user("u2", last_ts="2020-01-01T00:00:00Z"),
+            ],
+            "links": {},
+        }
 
         with patch.dict(os.environ, CREDS_ENV):
             with patch("requests.get", return_value=_mock_response(v2_page)):
                 with patch("requests.post", return_value=_mock_response(v1_data)):
-                    result = mixin.get_inactive_users(days=30, exclude_account_ids=["u1"])
+                    result = mixin.get_inactive_users(
+                        days=30, exclude_account_ids=["u1"]
+                    )
 
         assert len(result) == 1
         assert result[0]["accountId"] == "u2"
 
     def test_include_no_activity(self, mixin):
         v2_page = {"data": [_user("u1")], "links": {}}
-        v1_data = {"data": [{
-            "accountId": "u1",
-            "accountType": "atlassian",
-            "accountStatus": "active",
-            "statusInUserbase": True,
-            "name": "Test",
-            "email": "t@t.com",
-            "groups": [],
-            "productLastAccess": [],  # no activity
-        }], "links": {}}
+        v1_data = {
+            "data": [
+                {
+                    "accountId": "u1",
+                    "accountType": "atlassian",
+                    "accountStatus": "active",
+                    "statusInUserbase": True,
+                    "name": "Test",
+                    "email": "t@t.com",
+                    "groups": [],
+                    "productLastAccess": [],  # no activity
+                }
+            ],
+            "links": {},
+        }
 
         with patch.dict(os.environ, CREDS_ENV):
             with patch("requests.get", return_value=_mock_response(v2_page)):
@@ -424,16 +462,26 @@ class TestGetInactiveUsers:
     def test_uses_v2_account_type_not_v1(self, mixin):
         """v2 accountType drives the human filter, not v1."""
         v2_page = {"data": [_user("u1", account_type="atlassian")], "links": {}}
-        v1_data = {"data": [{
-            "accountId": "u1",
-            "accountType": "customer",  # v1 says customer — should be ignored
-            "accountStatus": "active",
-            "statusInUserbase": True,
-            "name": "Test",
-            "email": "t@t.com",
-            "groups": [],
-            "productLastAccess": [{"productKey": "jira-software", "lastActiveTimestamp": "2020-01-01T00:00:00Z"}],
-        }], "links": {}}
+        v1_data = {
+            "data": [
+                {
+                    "accountId": "u1",
+                    "accountType": "customer",  # v1 says customer — should be ignored
+                    "accountStatus": "active",
+                    "statusInUserbase": True,
+                    "name": "Test",
+                    "email": "t@t.com",
+                    "groups": [],
+                    "productLastAccess": [
+                        {
+                            "productKey": "jira-software",
+                            "lastActiveTimestamp": "2020-01-01T00:00:00Z",
+                        }
+                    ],
+                }
+            ],
+            "links": {},
+        }
 
         with patch.dict(os.environ, CREDS_ENV):
             with patch("requests.get", return_value=_mock_response(v2_page)):

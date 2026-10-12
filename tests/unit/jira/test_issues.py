@@ -739,9 +739,7 @@ class TestIssuesMixin:
         issues_mixin.jira.update_issue.assert_called_once_with(
             issue_key="TEST-123",
             update={
-                "fields": {
-                    "components": [{"name": "Frontend"}, {"name": "Backend"}]
-                }
+                "fields": {"components": [{"name": "Frontend"}, {"name": "Backend"}]}
             },
         )
         assert document.key == "TEST-123"
@@ -764,18 +762,13 @@ class TestIssuesMixin:
 
         # Test updating with component objects containing IDs
         document = issues_mixin.update_issue(
-            issue_key="TEST-123",
-            components=[{"id": "10911"}, {"id": "10912"}]
+            issue_key="TEST-123", components=[{"id": "10911"}, {"id": "10912"}]
         )
 
         # Verify the API call includes component dicts with IDs
         issues_mixin.jira.update_issue.assert_called_once_with(
             issue_key="TEST-123",
-            update={
-                "fields": {
-                    "components": [{"id": "10911"}, {"id": "10912"}]
-                }
-            },
+            update={"fields": {"components": [{"id": "10911"}, {"id": "10912"}]}},
         )
         assert document.key == "TEST-123"
 
@@ -822,8 +815,7 @@ class TestIssuesMixin:
 
         # Test adding components using add_components parameter
         document = issues_mixin.update_issue(
-            issue_key="TEST-123",
-            add_components=[{"id": "10912"}, {"id": "10913"}]
+            issue_key="TEST-123", add_components=[{"id": "10912"}, {"id": "10913"}]
         )
 
         # Verify the API call uses ADD operation
@@ -831,12 +823,9 @@ class TestIssuesMixin:
             issue_key="TEST-123",
             update={
                 "update": {
-                    "components": [
-                        {"add": {"id": "10912"}},
-                        {"add": {"id": "10913"}}
-                    ]
+                    "components": [{"add": {"id": "10912"}}, {"add": {"id": "10913"}}]
                 }
-            }
+            },
         )
         assert document.key == "TEST-123"
 
@@ -858,20 +847,13 @@ class TestIssuesMixin:
 
         # Test removing components using remove_components parameter
         document = issues_mixin.update_issue(
-            issue_key="TEST-123",
-            remove_components=[{"id": "10911"}]
+            issue_key="TEST-123", remove_components=[{"id": "10911"}]
         )
 
         # Verify the API call uses REMOVE operation
         issues_mixin.jira.update_issue.assert_called_once_with(
             issue_key="TEST-123",
-            update={
-                "update": {
-                    "components": [
-                        {"remove": {"id": "10911"}}
-                    ]
-                }
-            }
+            update={"update": {"components": [{"remove": {"id": "10911"}}]}},
         )
         assert document.key == "TEST-123"
 
@@ -894,7 +876,7 @@ class TestIssuesMixin:
         # Test using components dict with add and remove
         document = issues_mixin.update_issue(
             issue_key="TEST-123",
-            components={"add": [{"id": "10912"}], "remove": [{"id": "10911"}]}
+            components={"add": [{"id": "10912"}], "remove": [{"id": "10911"}]},
         )
 
         # Verify the API call uses both ADD and REMOVE operations
@@ -904,10 +886,10 @@ class TestIssuesMixin:
                 "update": {
                     "components": [
                         {"add": {"id": "10912"}},
-                        {"remove": {"id": "10911"}}
+                        {"remove": {"id": "10911"}},
                     ]
                 }
-            }
+            },
         )
         assert document.key == "TEST-123"
 

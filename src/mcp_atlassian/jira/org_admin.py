@@ -122,13 +122,21 @@ class OrgAdminMixin(JiraClient):
         """Build query-param dict for v2 users endpoints."""
         params: dict[str, Any] = {"limit": limit}
         if status_filter:
-            params["status"] = status_filter if isinstance(status_filter, list) else [status_filter]
+            params["status"] = (
+                status_filter if isinstance(status_filter, list) else [status_filter]
+            )
         if claim_status:
             params["claimStatus"] = claim_status
         if account_status:
-            params["accountStatus"] = account_status if isinstance(account_status, list) else [account_status]
+            params["accountStatus"] = (
+                account_status if isinstance(account_status, list) else [account_status]
+            )
         if membership_status:
-            params["membershipStatus"] = membership_status if isinstance(membership_status, list) else [membership_status]
+            params["membershipStatus"] = (
+                membership_status
+                if isinstance(membership_status, list)
+                else [membership_status]
+            )
         if account_ids:
             params["accountIds"] = account_ids
         if directory_ids:
@@ -235,7 +243,9 @@ class OrgAdminMixin(JiraClient):
             search_term=search_term,
             mfa_enabled=mfa_enabled,
         )
-        return [self._parse_user(raw) for raw in self._paginated_get(url, headers, params)]
+        return [
+            self._parse_user(raw) for raw in self._paginated_get(url, headers, params)
+        ]
 
     def get_org_user_details(
         self,
@@ -302,7 +312,9 @@ class OrgAdminMixin(JiraClient):
             mfa_enabled=mfa_enabled,
         )
         params.pop("limit", None)
-        response = requests.get(url, headers=self._org_admin_headers(org_key), params=params)
+        response = requests.get(
+            url, headers=self._org_admin_headers(org_key), params=params
+        )
         response.raise_for_status()
         return response.json().get("count", 0)
 
@@ -425,19 +437,21 @@ class OrgAdminMixin(JiraClient):
             data = response.json()
 
             for raw in data.get("data", []):
-                all_users.append({
-                    "accountId": raw.get("accountId"),
-                    "accountType": raw.get("accountType", "").lower(),
-                    "accountStatus": raw.get("accountStatus", "").lower(),
-                    "statusInUserbase": bool(raw.get("statusInUserbase")),
-                    "name": raw.get("name", ""),
-                    "email": raw.get("email", ""),
-                    "groups": [
-                        {"name": g.get("name"), "id": g.get("id")}
-                        for g in raw.get("groups", [])
-                    ],
-                    "productLastAccess": raw.get("productLastAccess", []),
-                })
+                all_users.append(
+                    {
+                        "accountId": raw.get("accountId"),
+                        "accountType": raw.get("accountType", "").lower(),
+                        "accountStatus": raw.get("accountStatus", "").lower(),
+                        "statusInUserbase": bool(raw.get("statusInUserbase")),
+                        "name": raw.get("name", ""),
+                        "email": raw.get("email", ""),
+                        "groups": [
+                            {"name": g.get("name"), "id": g.get("id")}
+                            for g in raw.get("groups", [])
+                        ],
+                        "productLastAccess": raw.get("productLastAccess", []),
+                    }
+                )
 
             cursor = data.get("links", {}).get("next")
             if not cursor:
@@ -508,7 +522,10 @@ class OrgAdminMixin(JiraClient):
 
         result = []
         for account_id, v2_user in active_ids.items():
-            if account_type and (v2_user.get("accountType") or "").lower() != account_type.lower():
+            if (
+                account_type
+                and (v2_user.get("accountType") or "").lower() != account_type.lower()
+            ):
                 continue
 
             if exclude_account_ids and account_id in exclude_account_ids:
@@ -516,32 +533,41 @@ class OrgAdminMixin(JiraClient):
 
             if exclude_group_ids:
                 v1_user = v1_by_id.get(account_id, {})
-                user_group_ids = {g["id"] for g in v1_user.get("groups", []) if g.get("id")}
+                user_group_ids = {
+                    g["id"] for g in v1_user.get("groups", []) if g.get("id")
+                }
                 if user_group_ids & set(exclude_group_ids):
                     continue
 
             v1_user = v1_by_id.get(account_id, {})
             last_access, last_product, days_inactive = self._user_last_access(v1_user)
 
-            merged = {**v2_user, **{k: v for k, v in v1_user.items() if k not in v2_user}}
+            merged = {
+                **v2_user,
+                **{k: v for k, v in v1_user.items() if k not in v2_user},
+            }
 
             if last_access is None:
                 if include_no_activity:
-                    result.append({
-                        **merged,
-                        "_days_inactive": None,
-                        "_last_access": None,
-                        "_last_product": None,
-                    })
+                    result.append(
+                        {
+                            **merged,
+                            "_days_inactive": None,
+                            "_last_access": None,
+                            "_last_product": None,
+                        }
+                    )
                 continue
 
             if days_inactive >= days:
-                result.append({
-                    **merged,
-                    "_days_inactive": days_inactive,
-                    "_last_access": last_access.isoformat(),
-                    "_last_product": last_product,
-                })
+                result.append(
+                    {
+                        **merged,
+                        "_days_inactive": days_inactive,
+                        "_last_access": last_access.isoformat(),
+                        "_last_product": last_product,
+                    }
+                )
 
         return result
 
@@ -549,7 +575,9 @@ class OrgAdminMixin(JiraClient):
     # User lifecycle (v2)
     # ------------------------------------------------------------------
 
-    def suspend_org_user(self, account_id: str, directory_id: str | None = None) -> bool:
+    def suspend_org_user(
+        self, account_id: str, directory_id: str | None = None
+    ) -> bool:
         """Suspend an organization user by account ID (v2 API).
 
         Args:
@@ -565,7 +593,9 @@ class OrgAdminMixin(JiraClient):
         requests.post(url, headers=self._org_admin_headers(org_key)).raise_for_status()
         return True
 
-    def reactivate_org_user(self, account_id: str, directory_id: str | None = None) -> bool:
+    def reactivate_org_user(
+        self, account_id: str, directory_id: str | None = None
+    ) -> bool:
         """Reactivate a suspended organization user by account ID (v2 API).
 
         Args:
@@ -601,7 +631,9 @@ class OrgAdminMixin(JiraClient):
             f"{ATLASSIAN_ADMIN_BASE_URL}/admin/v2/orgs/{org_id}"
             f"/directories/{dir_id}/users/{account_id}"
         )
-        requests.delete(url, headers=self._org_admin_headers(org_key)).raise_for_status()
+        requests.delete(
+            url, headers=self._org_admin_headers(org_key)
+        ).raise_for_status()
         return True
 
 
