@@ -10,7 +10,7 @@ This file provides guidance for autonomous coding agents working inside the **MC
 
 | Path | Purpose |
 | --- | --- |
-| `src/mcp_atlassian/` | Library source code (Python ≥ 3.10) |
+| `src/mcp_atlassian/` | Library source code (Python ≥ 3.14) |
 | `  ├─ jira/` | Jira client, mixins, and operations |
 | `  ├─ confluence/` | Confluence client, mixins, and operations |
 | `  ├─ models/` | Pydantic data models for API responses |
@@ -57,7 +57,7 @@ uv run pytest                        # run full test suite
 
 ## Code conventions
 
-* **Language**: Python ≥ 3.10
+* **Language**: Python ≥ 3.14
 * **Line length**: 88 characters maximum
 * **Imports**: Absolute imports, sorted by ruff
 * **Naming**: `snake_case` functions, `PascalCase` classes

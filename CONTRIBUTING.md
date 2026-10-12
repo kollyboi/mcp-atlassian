@@ -4,7 +4,7 @@ Thank you for your interest in contributing to MCP Atlassian! This document prov
 
 ## Development Setup
 
-1. Make sure you have Python 3.10+ installed
+1. Make sure you have Python 3.14+ installed
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 1. Fork the repository
 1. Clone your fork: `git clone https://github.com/YOUR-USERNAME/mcp-atlassian.git`
