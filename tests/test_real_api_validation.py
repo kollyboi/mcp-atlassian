@@ -54,7 +54,7 @@ class ResourceTracker:
         self.jira_issues: list[str] = []
         self.confluence_pages: list[str] = []
         self.confluence_comments: list[str] = []
-        self.jira_comments: list[str] = []
+        self.jira_comments: list[tuple[str, str]] = []
 
     def add_jira_issue(self, issue_key: str) -> None:
         """Track a Jira issue for later cleanup."""
@@ -794,7 +794,7 @@ async def test_confluence_update_page(
         print("Testing TextContent validation to prevent issue #97")
 
         try:
-            _ = TextContent(text="This should fail without type field")
+            _ = TextContent(text="This should fail without type field")  # type: ignore[call-arg]
             raise AssertionError(
                 "TextContent creation without 'type' field should fail but didn't"
             )
