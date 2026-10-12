@@ -48,7 +48,7 @@ uv run pytest                        # run full test suite
 ## Development rules
 
 1. **Package management**: ONLY use `uv`, NEVER `pip`
-2. **Branching**: NEVER work on `main`, always create feature branches
+2. **Branching**: Follow the user's requested branch and integration workflow
 3. **Type safety**: All functions require type hints
 4. **Testing**: New features need tests, bug fixes need regression tests
 5. **Commits**: Use trailers for attribution, never mention tools/AI

@@ -27,6 +27,8 @@ from .attachments import AttachmentsMixin
 from .org_admin import OrgAdminMixin
 from .screens import ScreensMixin
 from .security import SecurityMixin
+from .statuses import StatusesMixin
+from .workflows import WorkflowsMixin
 
 
 class JiraFetcher(
@@ -47,6 +49,8 @@ class JiraFetcher(
     OrgAdminMixin,
     ScreensMixin,
     SecurityMixin,
+    StatusesMixin,
+    WorkflowsMixin,
 ):
     """
     The main Jira client class providing access to all Jira operations.

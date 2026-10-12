@@ -84,6 +84,47 @@ class TestSearchMixin:
         # Assert: v2 API (jql) was NOT called
         search_mixin.jira.jql.assert_not_called()
 
+    def test_cloud_search_uses_next_page_token_for_start_offset(
+        self, search_mixin: SearchMixin
+    ):
+        search_mixin.config.is_cloud = True
+        first_page = {
+            "issues": [
+                {"key": "TEST-1", "fields": {"summary": "one"}},
+                {"key": "TEST-2", "fields": {"summary": "two"}},
+            ],
+            "nextPageToken": "token-1",
+        }
+        second_page = {
+            "issues": [
+                {"key": "TEST-3", "fields": {"summary": "three"}},
+                {"key": "TEST-4", "fields": {"summary": "four"}},
+            ],
+            "nextPageToken": "token-2",
+        }
+        search_mixin.jira.post.side_effect = [first_page, second_page]
+
+        result = search_mixin.search_issues("project = TEST", start=2, limit=1)
+
+        assert [issue.key for issue in result.issues] == ["TEST-3"]
+        assert result.start_at == 2
+        assert result.next_page_token == "token-2"
+        assert (
+            search_mixin.jira.post.call_args_list[1].kwargs["json"]["nextPageToken"]
+            == "token-1"
+        )
+
+    def test_count_issues_uses_approximate_count_on_cloud(
+        self, search_mixin: SearchMixin
+    ):
+        search_mixin.config.is_cloud = True
+        search_mixin.jira.post.return_value = {"count": 115}
+
+        assert search_mixin.count_issues("project = TEST") == 115
+        search_mixin.jira.post.assert_called_once_with(
+            "rest/api/3/search/approximate-count", json={"jql": "project = TEST"}
+        )
+
     def test_search_issues_calls_jql_for_server(
         self,
         search_mixin: SearchMixin,

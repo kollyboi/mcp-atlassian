@@ -26,6 +26,7 @@ class SearchMixin(JiraClient, IssueOperationsProto):
         limit: int = 50,
         expand: str | None = None,
         projects_filter: str | None = None,
+        next_page_token: str | None = None,
     ) -> JiraSearchResult:
         """
         Search for issues using JQL (Jira Query Language).
@@ -33,12 +34,12 @@ class SearchMixin(JiraClient, IssueOperationsProto):
         Args:
             jql: JQL query string
             fields: Fields to return (comma-separated string, list, tuple, set, or "*all")
-            start: Starting index if number of issues is greater than the limit
-                  Note: This parameter is ignored in Cloud environments and results will always
-                  start from the first page.
+            start: Starting index if number of issues is greater than the limit.
+                Cloud emulates this by walking nextPageToken pages.
             limit: Maximum issues to return
             expand: Optional items to expand (comma-separated)
             projects_filter: Optional comma-separated list of project keys to filter by, overrides config
+            next_page_token: Opaque Cloud continuation token from a previous result.
 
         Returns:
             JiraSearchResult object containing issues and metadata (total, start_at, max_results)
@@ -97,6 +98,9 @@ class SearchMixin(JiraClient, IssueOperationsProto):
                 fields_list = fields_param.split(",") if fields_param else ["id", "key"]
                 request_body: dict[str, Any] = {
                     "jql": jql,
+                    # Keeping the page size equal to the requested result size
+                    # makes the returned continuation token resume exactly after
+                    # the returned page, even when start is emulated.
                     "maxResults": min(limit, 100),  # v3 API max is 100 per request
                     "fields": fields_list,
                 }
@@ -106,11 +110,14 @@ class SearchMixin(JiraClient, IssueOperationsProto):
 
                 # Fetch issues using v3 API with nextPageToken pagination
                 all_issues: list[dict[str, Any]] = []
-                next_page_token: str | None = None
+                page_token = next_page_token
+                returned_token: str | None = None
 
-                while len(all_issues) < limit:
-                    if next_page_token:
-                        request_body["nextPageToken"] = next_page_token
+                while len(all_issues) < start + limit:
+                    if page_token:
+                        request_body["nextPageToken"] = page_token
+                    else:
+                        request_body.pop("nextPageToken", None)
 
                     response = self.jira.post(
                         "rest/api/3/search/jql", json=request_body
@@ -124,18 +131,27 @@ class SearchMixin(JiraClient, IssueOperationsProto):
                     issues = response.get("issues", [])
                     all_issues.extend(issues)
 
-                    # Check for more pages
-                    next_page_token = response.get("nextPageToken")
-                    if not next_page_token:
+                    page_token = response.get("nextPageToken")
+                    if not page_token or not issues:
                         break
+
+                    # Avoid an infinite loop if Jira returns a duplicate token.
+                    if page_token == request_body.get("nextPageToken"):
+                        logger.warning("Jira returned an unchanged nextPageToken")
+                        break
+
+                selected_issues = all_issues[start : start + limit]
+                if selected_issues and len(all_issues) >= start + limit:
+                    returned_token = page_token
 
                 # Build response dict for model
                 # Note: v3 API doesn't provide total count, so we use -1
                 response_dict: dict[str, Any] = {
-                    "issues": all_issues[:limit],
+                    "issues": selected_issues,
                     "total": -1,
-                    "startAt": 0,
+                    "startAt": start,
                     "maxResults": limit,
+                    "nextPageToken": returned_token,
                 }
 
                 search_result = JiraSearchResult.from_api_response(
@@ -180,6 +196,38 @@ class SearchMixin(JiraClient, IssueOperationsProto):
         except Exception as e:
             logger.error(f"Error searching issues with JQL '{jql}': {str(e)}")
             raise Exception(f"Error searching issues: {str(e)}") from e
+
+    def count_issues(self, jql: str) -> int:
+        """Return Jira's approximate issue count for a JQL query.
+
+        Jira Cloud does not include ``total`` in ``/search/jql`` responses.
+        The approximate-count endpoint is the supported low-cost alternative.
+
+        Args:
+            jql: JQL query to count.
+
+        Returns:
+            Approximate number of matching issues.
+        """
+        if not self.config.is_cloud:
+            response = self.jira.jql(jql, fields="key", start=0, limit=1)
+            if not isinstance(response, dict):
+                raise TypeError(
+                    f"Unexpected response type from issue search: {type(response)}"
+                )
+            return int(response.get("total", 0))
+
+        response = self.jira.post(
+            "rest/api/3/search/approximate-count", json={"jql": jql}
+        )
+        if not isinstance(response, dict):
+            raise TypeError(
+                f"Unexpected response type from approximate-count API: {type(response)}"
+            )
+        count = response.get("count")
+        if count is None:
+            raise ValueError("Jira approximate-count response did not contain count")
+        return int(count)
 
     def get_board_issues(
         self,

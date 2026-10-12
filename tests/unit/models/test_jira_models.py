@@ -1078,6 +1078,37 @@ class TestJiraSearchResult:
         assert issue.key == "PROJ-123"
         assert issue.summary == "Test Issue Summary"
 
+    def test_from_api_response_preserves_next_page_token(self, jira_search_data):
+        jira_search_data["nextPageToken"] = "opaque-token"
+        result = JiraSearchResult.from_api_response(jira_search_data)
+
+        assert result.next_page_token == "opaque-token"
+        assert result.to_simplified_dict()["next_page_token"] == "opaque-token"
+
+
+class TestCascadingSelect:
+    """Tests for nested Jira cascading-select values."""
+
+    def test_simplified_issue_preserves_child_option(self):
+        issue = JiraIssue.from_api_response(
+            {
+                "id": "1",
+                "key": "PROJ-1",
+                "fields": {
+                    "summary": "Cascading",
+                    "customfield_10000": {
+                        "value": "Ja",
+                        "child": {"value": "Oslo"},
+                    },
+                },
+            },
+            requested_fields="*all",
+        )
+
+        assert issue.to_simplified_dict()["customfield_10000"] == {
+            "value": {"value": "Ja", "child": {"value": "Oslo"}}
+        }
+
     def test_from_api_response_with_empty_data(self):
         """Test creating a JiraSearchResult from empty data."""
         result = JiraSearchResult.from_api_response({})

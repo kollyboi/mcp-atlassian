@@ -420,46 +420,65 @@ def test_get_project_issue_types(
     projects_mixin: ProjectsMixin, mock_issue_types: list[dict]
 ):
     """Test get_project_issue_types method."""
-    createmeta = {
-        "projects": [
-            {"key": "PROJ1", "name": "Project One", "issuetypes": mock_issue_types}
-        ]
-    }
-    projects_mixin.jira.issue_createmeta_issuetypes.return_value = createmeta
+    projects_mixin.jira.get.side_effect = [
+        {"id": "10001"},
+        mock_issue_types,
+    ]
 
     result = projects_mixin.get_project_issue_types("PROJ1")
     assert result == mock_issue_types
-    projects_mixin.jira.issue_createmeta_issuetypes.assert_called_once_with(
-        project="PROJ1"
-    )
+    assert projects_mixin.jira.get.call_args_list == [
+        call("rest/api/3/project/PROJ1"),
+        call(
+            "rest/api/3/issuetype/project",
+            params={"projectId": "10001"},
+        ),
+    ]
+
+
+def test_get_workflow_scheme_for_project(projects_mixin: ProjectsMixin):
+    """Test resolving a project's workflow scheme through its numeric ID."""
+    scheme = {"values": [{"workflowScheme": {"id": 10055}}]}
+    projects_mixin.jira.get.side_effect = [{"id": "10001"}, scheme]
+
+    result = projects_mixin.get_workflow_scheme_for_project("PROJ1")
+
+    assert result == scheme
+    assert projects_mixin.jira.get.call_args_list == [
+        call("rest/api/3/project/PROJ1"),
+        call(
+            "rest/api/3/workflowscheme/project",
+            params={"projectId": "10001"},
+        ),
+    ]
+
+
+def test_get_workflow_scheme_for_project_invalid_project(
+    projects_mixin: ProjectsMixin,
+):
+    """Test that an invalid project response is rejected."""
+    projects_mixin.jira.get.return_value = {}
+
+    with pytest.raises(TypeError, match="Unexpected project response"):
+        projects_mixin.get_workflow_scheme_for_project("PROJ1")
 
 
 def test_get_project_issue_types_empty_response(projects_mixin: ProjectsMixin):
     """Test get_project_issue_types method with empty response."""
-    # Empty projects list
-    projects_mixin.jira.issue_createmeta_issuetypes.return_value = {"projects": []}
+    projects_mixin.jira.get.side_effect = [{"id": "10001"}, []]
 
     result = projects_mixin.get_project_issue_types("PROJ1")
     assert result == []
-    projects_mixin.jira.issue_createmeta_issuetypes.assert_called_once()
-
-    # No issuetypes field
-    projects_mixin.jira.issue_createmeta_issuetypes.reset_mock()
-    projects_mixin.jira.issue_createmeta_issuetypes.return_value = {
-        "projects": [{"key": "PROJ1", "name": "Project One"}]
-    }
-
-    result = projects_mixin.get_project_issue_types("PROJ1")
-    assert result == []
+    assert projects_mixin.jira.get.call_count == 2
 
 
 def test_get_project_issue_types_exception(projects_mixin: ProjectsMixin):
     """Test get_project_issue_types method with exception."""
-    projects_mixin.jira.issue_createmeta_issuetypes.side_effect = Exception("API error")
+    projects_mixin.jira.get.side_effect = Exception("API error")
 
     result = projects_mixin.get_project_issue_types("PROJ1")
     assert result == []
-    projects_mixin.jira.issue_createmeta_issuetypes.assert_called_once()
+    projects_mixin.jira.get.assert_called_once()
 
 
 def test_get_project_issues_count(projects_mixin: ProjectsMixin):

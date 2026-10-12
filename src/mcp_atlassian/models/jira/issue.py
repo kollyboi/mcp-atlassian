@@ -691,6 +691,24 @@ class JiraIssue(ApiModel, TimestampMixin):
             return field_value
 
         if isinstance(field_value, dict):
+            # Preserve the child of cascading-select fields.  Jira represents a
+            # cascading value as {"value": "parent", "child": {"value": ...}}.
+            # Do not reduce it to only the parent value or the second level is lost.
+            if "child" in field_value:
+                result: dict[str, Any] = {}
+                if "value" in field_value:
+                    result["value"] = self._process_custom_field_value(
+                        field_value["value"]
+                    )
+                if "child" in field_value:
+                    result["child"] = self._process_cascading_option(
+                        field_value["child"]
+                    )
+                for key in ("id", "self"):
+                    if key in field_value:
+                        result[key] = field_value[key]
+                return result
+
             # For single-select, user pickers, etc., try to extract 'value' or 'name'
             if "value" in field_value:
                 return field_value["value"]
@@ -702,6 +720,21 @@ class JiraIssue(ApiModel, TimestampMixin):
             return [self._process_custom_field_value(item) for item in field_value]
 
         return str(field_value)
+
+    def _process_cascading_option(self, option: Any) -> Any:
+        """Normalize one level of a cascading-select option without flattening it."""
+        if not isinstance(option, dict):
+            return self._process_custom_field_value(option)
+
+        result: dict[str, Any] = {}
+        if "value" in option:
+            result["value"] = self._process_custom_field_value(option["value"])
+        if "child" in option:
+            result["child"] = self._process_cascading_option(option["child"])
+        for key in ("id", "self"):
+            if key in option:
+                result[key] = option[key]
+        return result
 
     def _find_custom_field_in_issue(
         self, name: str, pattern: bool = False

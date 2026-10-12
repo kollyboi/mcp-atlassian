@@ -116,6 +116,24 @@ class UsersMixin(JiraClient):
         error_msg = f"Could not find account ID for user: {assignee}"
         raise ValueError(error_msg)
 
+    def search_users(
+        self, query: str, *, start_at: int = 0, max_results: int = 50
+    ) -> list[dict[str, object]]:
+        """Search Jira users by display name, email, or account identifier."""
+        if not query.strip():
+            raise ValueError("query must not be empty")
+        params = {
+            "query": query,
+            "startAt": start_at,
+            "maxResults": min(max_results, 100),
+        }
+        response = self.jira.get("rest/api/3/user/search", params=params)
+        if not isinstance(response, list):
+            raise TypeError(
+                f"Unexpected response type from user search: {type(response)}"
+            )
+        return response
+
     def _lookup_user_directly(self, username: str) -> str | None:
         """
         Look up a user account ID directly.

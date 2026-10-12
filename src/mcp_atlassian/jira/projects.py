@@ -250,26 +250,52 @@ class ProjectsMixin(JiraClient, SearchOperationsProto):
             List of issue type data dictionaries
         """
         try:
-            meta = self.jira.issue_createmeta_issuetypes(project=project_key)
-            if not isinstance(meta, dict):
-                msg = f"Unexpected return value type from `jira.issue_createmeta_issuetypes`: {type(meta)}"
+            project = self.jira.get(f"rest/api/3/project/{project_key}")
+            if not isinstance(project, dict) or not project.get("id"):
+                raise TypeError(
+                    f"Unexpected project response while resolving {project_key}"
+                )
+            response = self.jira.get(
+                "rest/api/3/issuetype/project",
+                params={"projectId": str(project["id"])},
+            )
+            if not isinstance(response, list):
+                msg = f"Unexpected response type from project issue types: {type(response)}"
                 logger.error(msg)
                 raise TypeError(msg)
-
-            issue_types = []
-            # Extract issue types from createmeta response
-            if "projects" in meta and len(meta["projects"]) > 0:
-                project_data = meta["projects"][0]
-                if "issuetypes" in project_data:
-                    issue_types = project_data["issuetypes"]
-
-            return issue_types
+            return response
 
         except Exception as e:
             logger.error(
                 f"Error getting issue types for project {project_key}: {str(e)}"
             )
             return []
+
+    def get_project_statuses(self, project_key: str) -> list[dict[str, Any]]:
+        """Get statuses available to a project, grouped by issue type."""
+        response = self.jira.get(f"rest/api/3/project/{project_key}/statuses")
+        if not isinstance(response, list):
+            raise TypeError(
+                f"Unexpected response type from project statuses: {type(response)}"
+            )
+        return response
+
+    def get_workflow_scheme_for_project(self, project_key: str) -> dict[str, Any]:
+        """Get the workflow scheme associated with a project."""
+        project = self.jira.get(f"rest/api/3/project/{project_key}")
+        if not isinstance(project, dict) or not project.get("id"):
+            raise TypeError(
+                f"Unexpected project response while resolving {project_key}"
+            )
+        response = self.jira.get(
+            "rest/api/3/workflowscheme/project",
+            params={"projectId": str(project["id"])},
+        )
+        if not isinstance(response, dict):
+            raise TypeError(
+                f"Unexpected response type from project workflow scheme: {type(response)}"
+            )
+        return response
 
     def get_project_issues_count(self, project_key: str) -> int:
         """

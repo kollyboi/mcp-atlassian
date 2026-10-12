@@ -23,6 +23,7 @@ class JiraSearchResult(ApiModel):
     total: int = 0
     start_at: int = 0
     max_results: int = 0
+    next_page_token: str | None = None
     issues: list[JiraIssue] = Field(default_factory=list)
 
     @classmethod
@@ -59,26 +60,30 @@ class JiraSearchResult(ApiModel):
         raw_total = data.get("total")
         raw_start_at = data.get("startAt")
         raw_max_results = data.get("maxResults")
+        next_page_token = data.get("nextPageToken")
 
         try:
             total = int(raw_total) if raw_total is not None else -1
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             total = -1
 
         try:
             start_at = int(raw_start_at) if raw_start_at is not None else -1
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             start_at = -1
 
         try:
             max_results = int(raw_max_results) if raw_max_results is not None else -1
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             max_results = -1
 
         return cls(
             total=total,
             start_at=start_at,
             max_results=max_results,
+            next_page_token=(
+                str(next_page_token) if next_page_token is not None else None
+            ),
             issues=issues,
         )
 
@@ -101,5 +106,6 @@ class JiraSearchResult(ApiModel):
             "total": self.total,
             "start_at": self.start_at,
             "max_results": self.max_results,
+            "next_page_token": self.next_page_token,
             "issues": [issue.to_simplified_dict() for issue in self.issues],
         }

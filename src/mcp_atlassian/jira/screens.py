@@ -240,6 +240,29 @@ class ScreensMixin(JiraClient):
         ids = [_require_id("screen_scheme_id", i) for i in screen_scheme_ids]
         return self._get_all_pages("rest/api/3/screenscheme", {"id": ids})
 
+    def list_screens(
+        self, query: str | None = None, start_at: int = 0, max_results: int = 100
+    ) -> dict[str, Any]:
+        """Search for screens.
+
+        Args:
+            query: Optional screen name query.
+            start_at: Zero-based result offset.
+            max_results: Maximum results to request.
+
+        Returns:
+            Jira's paginated screen search response.
+        """
+        params: dict[str, Any] = {
+            "startAt": start_at,
+            "maxResults": min(max_results, 100),
+        }
+        if query:
+            params["query"] = query
+        return self._expect_dict(
+            self.jira.get("rest/api/3/screens", params=params), "screens"
+        )
+
     # ------------------------------------------------------------------
     # Screens, tabs and tab fields
     # ------------------------------------------------------------------
@@ -435,6 +458,100 @@ class ScreensMixin(JiraClient):
         self.jira.put(
             f"rest/api/3/field/{field}/context/{context}/project", data=payload
         )
+
+    # ------------------------------------------------------------------
+    # Custom field options
+    # ------------------------------------------------------------------
+
+    def get_field_options(
+        self, field_id: str, context_id: str, *, option_id: str | None = None
+    ) -> list[dict[str, Any]] | dict[str, Any]:
+        """Get options belonging to a custom field context.
+
+        Args:
+            field_id: Custom field ID.
+            context_id: Field context ID.
+            option_id: Optional option ID for a single option lookup.
+
+        Returns:
+            A list of options, or one option when ``option_id`` is supplied.
+        """
+        field = _require_id("field_id", field_id)
+        context = _require_id("context_id", context_id)
+        suffix = f"/{_require_id('option_id', option_id)}" if option_id else ""
+        endpoint = f"rest/api/3/field/{field}/context/{context}/option{suffix}"
+        if option_id:
+            return self._expect_dict(self.jira.get(endpoint), endpoint)
+        return self._get_all_pages(endpoint)
+
+    def add_field_options(
+        self,
+        field_id: str,
+        context_id: str,
+        options: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Add options to a custom field context."""
+        if not options:
+            raise ValueError("options must contain at least one option")
+        field = _require_id("field_id", field_id)
+        context = _require_id("context_id", context_id)
+        endpoint = f"rest/api/3/field/{field}/context/{context}/option"
+        result = self._expect_dict(
+            self.jira.post(endpoint, json={"options": options}), endpoint
+        )
+        return result.get("options", [])
+
+    def update_field_option(
+        self,
+        field_id: str,
+        context_id: str,
+        option_id: str,
+        *,
+        value: str | None = None,
+        disabled: bool | None = None,
+    ) -> dict[str, Any]:
+        """Update a custom field option's value and/or disabled state."""
+        if value is None and disabled is None:
+            raise ValueError("Provide at least one of value or disabled")
+        field = _require_id("field_id", field_id)
+        context = _require_id("context_id", context_id)
+        option = _require_id("option_id", option_id)
+        payload: dict[str, Any] = {}
+        if value is not None:
+            payload["value"] = value
+        if disabled is not None:
+            payload["disabled"] = disabled
+        endpoint = f"rest/api/3/field/{field}/context/{context}/option/{option}"
+        return self._expect_dict(self.jira.put(endpoint, data=payload), endpoint)
+
+    def remove_field_option(
+        self, field_id: str, context_id: str, option_id: str
+    ) -> None:
+        """Delete a custom field option."""
+        field = _require_id("field_id", field_id)
+        context = _require_id("context_id", context_id)
+        option = _require_id("option_id", option_id)
+        self.jira.delete(f"rest/api/3/field/{field}/context/{context}/option/{option}")
+
+    def reorder_field_options(
+        self,
+        field_id: str,
+        context_id: str,
+        option_ids: list[str],
+        *,
+        position: str = "First",
+    ) -> dict[str, Any]:
+        """Move field options to a position in the option list."""
+        if not option_ids:
+            raise ValueError("option_ids must contain at least one option ID")
+        field = _require_id("field_id", field_id)
+        context = _require_id("context_id", context_id)
+        payload = {
+            "customFieldOptionIds": [_require_id("option_id", i) for i in option_ids],
+            "position": position,
+        }
+        endpoint = f"rest/api/3/field/{field}/context/{context}/option/move"
+        return self._expect_dict(self.jira.put(endpoint, data=payload), endpoint)
 
     # ------------------------------------------------------------------
     # Fields and field configurations

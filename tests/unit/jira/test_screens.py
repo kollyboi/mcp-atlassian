@@ -181,6 +181,17 @@ class TestScreenReads:
             mixin.get_screen_tabs("10/../../x")
         mixin.jira.get.assert_not_called()
 
+    def test_list_screens_uses_query_and_pagination(self, mixin):
+        mixin.jira.get.return_value = {"values": [{"id": "10"}], "isLast": True}
+
+        result = mixin.list_screens("Create", start_at=5, max_results=20)
+
+        assert result["values"][0]["id"] == "10"
+        mixin.jira.get.assert_called_once_with(
+            "rest/api/3/screens",
+            params={"startAt": 5, "maxResults": 20, "query": "Create"},
+        )
+
 
 class TestScreenWrites:
     def test_add_field_payload(self, mixin):
@@ -250,6 +261,49 @@ class TestContexts:
         with pytest.raises(ValueError, match="at least one"):
             mixin.assign_context_to_project("customfield_1", "9", [])
         mixin.jira.put.assert_not_called()
+
+
+class TestFieldOptions:
+    def test_get_options_follows_pages(self, mixin):
+        mixin.jira.get.return_value = _page([{"id": "1", "value": "Norway"}])
+
+        result = mixin.get_field_options("customfield_1", "2")
+
+        assert result == [{"id": "1", "value": "Norway"}]
+        assert _queries(mixin.jira.get)[0][0].endswith(
+            "/field/customfield_1/context/2/option"
+        )
+
+    def test_add_options_returns_created_options(self, mixin):
+        mixin.jira.post.return_value = {"options": [{"id": "1", "value": "Norway"}]}
+
+        result = mixin.add_field_options("customfield_1", "2", [{"value": "Norway"}])
+
+        assert result == [{"id": "1", "value": "Norway"}]
+        mixin.jira.post.assert_called_once_with(
+            "rest/api/3/field/customfield_1/context/2/option",
+            json={"options": [{"value": "Norway"}]},
+        )
+
+    def test_update_and_reorder_options(self, mixin):
+        mixin.jira.put.side_effect = [{"id": "1", "value": "Norge"}, {}]
+
+        assert (
+            mixin.update_field_option(
+                "customfield_1", "2", "1", value="Norge", disabled=True
+            )["value"]
+            == "Norge"
+        )
+        mixin.reorder_field_options("customfield_1", "2", ["1", "3"], position="Last")
+
+        assert mixin.jira.put.call_args_list[0].kwargs["data"] == {
+            "value": "Norge",
+            "disabled": True,
+        }
+        assert mixin.jira.put.call_args_list[1].kwargs["data"] == {
+            "customFieldOptionIds": ["1", "3"],
+            "position": "Last",
+        }
 
 
 class TestFields:

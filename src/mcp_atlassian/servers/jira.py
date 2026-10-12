@@ -85,6 +85,28 @@ async def get_user_profile(
 
 @jira_mcp.tool(
     tags={"jira", "read"},
+    annotations={"title": "Search Users", "readOnlyHint": True},
+)
+async def search_users(
+    ctx: Context,
+    query: Annotated[
+        str, Field(description="Name, email, or account ID to search for.")
+    ],
+    start_at: Annotated[
+        int, Field(description="Starting index for pagination.", default=0, ge=0)
+    ] = 0,
+    max_results: Annotated[
+        int, Field(description="Maximum users to return.", default=50, ge=1, le=100)
+    ] = 50,
+) -> str:
+    """Find Jira users and return account IDs suitable for issue updates."""
+    jira = await get_jira_fetcher(ctx)
+    users = jira.search_users(query, start_at=start_at, max_results=max_results)
+    return json.dumps(users, indent=2, ensure_ascii=False)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read"},
     annotations={"title": "Get Issue", "readOnlyHint": True},
 )
 async def get_issue(
@@ -208,6 +230,16 @@ async def search(
         int,
         Field(description="Starting index for pagination (0-based)", default=0, ge=0),
     ] = 0,
+    next_page_token: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Opaque next_page_token returned by a previous Cloud search. "
+                "Use this instead of start_at for efficient pagination."
+            ),
+            default=None,
+        ),
+    ] = None,
     projects_filter: Annotated[
         str | None,
         Field(
@@ -236,6 +268,7 @@ async def search(
         fields: Comma-separated fields to return.
         limit: Maximum number of results.
         start_at: Starting index for pagination.
+        next_page_token: Opaque Cloud continuation token from a previous result.
         projects_filter: Comma-separated list of project keys to filter by.
         expand: Optional fields to expand.
 
@@ -247,16 +280,39 @@ async def search(
     if fields and fields != "*all":
         fields_list = [f.strip() for f in fields.split(",")]
 
+    search_kwargs: dict[str, Any] = {
+        "jql": jql,
+        "fields": fields_list,
+        "limit": limit,
+        "start": start_at,
+        "expand": expand,
+        "projects_filter": projects_filter,
+    }
+    if next_page_token is not None:
+        search_kwargs["next_page_token"] = next_page_token
+
     search_result = jira.search_issues(
-        jql=jql,
-        fields=fields_list,
-        limit=limit,
-        start=start_at,
-        expand=expand,
-        projects_filter=projects_filter,
+        **search_kwargs,
     )
     result = search_result.to_simplified_dict()
     return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read"},
+    annotations={"title": "Count Issues", "readOnlyHint": True},
+)
+async def count_issues(
+    ctx: Context,
+    jql: Annotated[str, Field(description="JQL query string to count.")],
+) -> str:
+    """Return a compact count for issues matching a JQL query."""
+    jira = await get_jira_fetcher(ctx)
+    return json.dumps(
+        {"jql": jql, "count": jira.count_issues(jql)},
+        indent=2,
+        ensure_ascii=False,
+    )
 
 
 @jira_mcp.tool(
@@ -1626,6 +1682,53 @@ async def get_project_versions(
 
 
 @jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Project Issue Types", "readOnlyHint": True},
+)
+async def get_project_issue_types(
+    ctx: Context,
+    project_key: Annotated[str, Field(description="Jira project key.")],
+) -> str:
+    """Get the issue types configured for a Jira project."""
+    jira = await get_jira_fetcher(ctx)
+    return json.dumps(
+        jira.get_project_issue_types(project_key), indent=2, ensure_ascii=False
+    )
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Project Statuses", "readOnlyHint": True},
+)
+async def get_project_statuses(
+    ctx: Context,
+    project_key: Annotated[str, Field(description="Jira project key.")],
+) -> str:
+    """Get statuses configured for each issue type in a Jira project."""
+    jira = await get_jira_fetcher(ctx)
+    return json.dumps(
+        jira.get_project_statuses(project_key), indent=2, ensure_ascii=False
+    )
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Project Workflow Scheme", "readOnlyHint": True},
+)
+async def get_workflow_scheme_for_project(
+    ctx: Context,
+    project_key: Annotated[str, Field(description="Jira project key.")],
+) -> str:
+    """Get the workflow scheme associated with a Jira project."""
+    jira = await get_jira_fetcher(ctx)
+    return json.dumps(
+        jira.get_workflow_scheme_for_project(project_key),
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+@jira_mcp.tool(
     tags={"jira", "read"},
     annotations={"title": "Get All Projects", "readOnlyHint": True},
 )
@@ -2556,6 +2659,311 @@ def _admin_ok(**data: Any) -> str:
 
 @jira_mcp.tool(
     tags={"jira", "read", "admin"},
+    annotations={"title": "List Screens", "readOnlyHint": True},
+)
+async def list_screens(
+    ctx: Context,
+    query: Annotated[
+        str | None, Field(description="Optional screen name query.", default=None)
+    ] = None,
+    start_at: Annotated[int, Field(description="Starting index.", default=0, ge=0)] = 0,
+    max_results: Annotated[
+        int, Field(description="Maximum results.", default=100, ge=1, le=100)
+    ] = 100,
+) -> str:
+    """Search Jira screens available to the administrator."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(**jira.list_screens(query, start_at, max_results))
+    except Exception as e:
+        return _admin_error("list_screens", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Field Options", "readOnlyHint": True},
+)
+async def get_field_options(
+    ctx: Context,
+    field_id: Annotated[str, Field(description="Custom field ID.")],
+    context_id: Annotated[str, Field(description="Custom field context ID.")],
+    option_id: Annotated[
+        str | None, Field(description="Optional option ID.", default=None)
+    ] = None,
+) -> str:
+    """Read options belonging to a custom field context."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            options=jira.get_field_options(field_id, context_id, option_id=option_id)
+        )
+    except Exception as e:
+        return _admin_error("get_field_options", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Add Field Options", "destructiveHint": True},
+)
+@check_write_access
+async def add_field_options(
+    ctx: Context,
+    field_id: Annotated[str, Field(description="Custom field ID.")],
+    context_id: Annotated[str, Field(description="Custom field context ID.")],
+    options: Annotated[
+        list[dict[str, Any]],
+        Field(description="Option objects, e.g. [{'value': 'Norway'}]."),
+    ],
+) -> str:
+    """Add one or more options to a custom field context."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            action="options_added",
+            options=jira.add_field_options(field_id, context_id, options),
+        )
+    except Exception as e:
+        return _admin_error("add_field_options", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Update Field Option", "destructiveHint": True},
+)
+@check_write_access
+async def update_field_option(
+    ctx: Context,
+    field_id: Annotated[str, Field(description="Custom field ID.")],
+    context_id: Annotated[str, Field(description="Custom field context ID.")],
+    option_id: Annotated[str, Field(description="Option ID.")],
+    value: Annotated[
+        str | None, Field(description="New option value.", default=None)
+    ] = None,
+    disabled: Annotated[
+        bool | None, Field(description="Whether the option is disabled.", default=None)
+    ] = None,
+) -> str:
+    """Update a custom field option."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            action="option_updated",
+            option=jira.update_field_option(
+                field_id, context_id, option_id, value=value, disabled=disabled
+            ),
+        )
+    except Exception as e:
+        return _admin_error("update_field_option", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Remove Field Option", "destructiveHint": True},
+)
+@check_write_access
+async def remove_field_option(
+    ctx: Context,
+    field_id: Annotated[str, Field(description="Custom field ID.")],
+    context_id: Annotated[str, Field(description="Custom field context ID.")],
+    option_id: Annotated[str, Field(description="Option ID.")],
+) -> str:
+    """Delete a custom field option."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        jira.remove_field_option(field_id, context_id, option_id)
+        return _admin_ok(action="option_removed", option_id=option_id)
+    except Exception as e:
+        return _admin_error("remove_field_option", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Reorder Field Options", "destructiveHint": True},
+)
+@check_write_access
+async def reorder_field_options(
+    ctx: Context,
+    field_id: Annotated[str, Field(description="Custom field ID.")],
+    context_id: Annotated[str, Field(description="Custom field context ID.")],
+    option_ids: Annotated[list[str], Field(description="Option IDs to move.")],
+    position: Annotated[
+        str, Field(description="First, Last, or an option ID.", default="First")
+    ] = "First",
+) -> str:
+    """Move custom field options to a position in the list."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            action="options_reordered",
+            result=jira.reorder_field_options(
+                field_id, context_id, option_ids, position=position
+            ),
+        )
+    except Exception as e:
+        return _admin_error("reorder_field_options", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Search Statuses", "readOnlyHint": True},
+)
+async def search_statuses(
+    ctx: Context,
+    query: Annotated[
+        str | None, Field(description="Optional status name query.", default=None)
+    ] = None,
+    project_id: Annotated[
+        str | None, Field(description="Optional project ID.", default=None)
+    ] = None,
+    issue_type_id: Annotated[
+        str | None, Field(description="Optional issue type ID.", default=None)
+    ] = None,
+    start_at: Annotated[int, Field(description="Starting index.", default=0, ge=0)] = 0,
+    max_results: Annotated[
+        int, Field(description="Maximum results.", default=50, ge=1, le=50)
+    ] = 50,
+) -> str:
+    """Search Jira statuses."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            **jira.search_statuses(
+                query, project_id, issue_type_id, start_at, max_results
+            )
+        )
+    except Exception as e:
+        return _admin_error("search_statuses", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Create Statuses", "destructiveHint": True},
+)
+@check_write_access
+async def create_statuses(
+    ctx: Context,
+    statuses: Annotated[
+        list[dict[str, Any]], Field(description="Status definitions to create.")
+    ],
+) -> str:
+    """Create Jira statuses."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            action="statuses_created", statuses=jira.create_statuses(statuses)
+        )
+    except Exception as e:
+        return _admin_error("create_statuses", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Update Statuses", "destructiveHint": True},
+)
+@check_write_access
+async def update_statuses(
+    ctx: Context,
+    statuses: Annotated[
+        list[dict[str, Any]], Field(description="Status definitions to update.")
+    ],
+) -> str:
+    """Update Jira statuses, including renaming a status such as Godkjent."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            action="statuses_updated", statuses=jira.update_statuses(statuses)
+        )
+    except Exception as e:
+        return _admin_error("update_statuses", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Status Usages", "readOnlyHint": True},
+)
+async def get_status_usages(
+    ctx: Context,
+    status_id: Annotated[str, Field(description="Status ID.")],
+) -> str:
+    """Find workflows that use a Jira status."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(usages=jira.get_status_usages(status_id))
+    except Exception as e:
+        return _admin_error("get_status_usages", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Search Workflows", "readOnlyHint": True},
+)
+async def search_workflows(
+    ctx: Context,
+    query: Annotated[
+        str | None, Field(description="Optional workflow name query.", default=None)
+    ] = None,
+    start_at: Annotated[int, Field(description="Starting index.", default=0, ge=0)] = 0,
+    max_results: Annotated[
+        int, Field(description="Maximum results.", default=50, ge=1, le=50)
+    ] = 50,
+) -> str:
+    """Search Jira workflows."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(**jira.search_workflows(query, start_at, max_results))
+    except Exception as e:
+        return _admin_error("search_workflows", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Update Workflows", "destructiveHint": True},
+)
+@check_write_access
+async def update_workflows(
+    ctx: Context,
+    workflows: Annotated[
+        list[dict[str, Any]], Field(description="Workflow update definitions.")
+    ],
+) -> str:
+    """Update Jira workflow definitions."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            action="workflows_updated", result=jira.update_workflows(workflows)
+        )
+    except Exception as e:
+        return _admin_error("update_workflows", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Publish Workflow Scheme", "destructiveHint": True},
+)
+@check_write_access
+async def publish_workflow_scheme(
+    ctx: Context,
+    workflow_scheme_id: Annotated[str, Field(description="Workflow scheme ID.")],
+    status_mappings: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description="Optional status mappings for the draft scheme.", default=None
+        ),
+    ] = None,
+) -> str:
+    """Publish a draft Jira workflow scheme."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            action="workflow_scheme_published",
+            result=jira.publish_workflow_scheme(workflow_scheme_id, status_mappings),
+        )
+    except Exception as e:
+        return _admin_error("publish_workflow_scheme", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
     annotations={"title": "Get Project Screen Schemes", "readOnlyHint": True},
 )
 async def get_project_screen_schemes(
@@ -2959,6 +3367,33 @@ async def create_custom_field(
         return _admin_ok(action="field_created", field=field)
     except Exception as e:
         return _admin_error("create_custom_field", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Create Field", "destructiveHint": True},
+)
+@check_write_access
+async def create_field(
+    ctx: Context,
+    name: Annotated[str, Field(description="Display name of the field.")],
+    field_type: Annotated[str, Field(description="Full Jira custom field type key.")],
+    description: Annotated[
+        str | None, Field(description="Optional field description.", default=None)
+    ] = None,
+    searcher_key: Annotated[
+        str | None, Field(description="Optional searcher key.", default=None)
+    ] = None,
+) -> str:
+    """Compatibility alias for creating a custom field."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        field = jira.create_custom_field(
+            name, field_type, description=description, searcher_key=searcher_key
+        )
+        return _admin_ok(action="field_created", field=field)
+    except Exception as e:
+        return _admin_error("create_field", e)
 
 
 @jira_mcp.tool(
