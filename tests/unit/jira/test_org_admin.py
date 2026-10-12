@@ -7,7 +7,6 @@ import pytest
 import requests
 
 from mcp_atlassian.jira import JiraFetcher
-from mcp_atlassian.jira.config import JiraConfig
 
 BASE = "https://api.atlassian.com/admin"
 ORG = "test-org-id"
@@ -141,7 +140,7 @@ class TestFetchOrgUsersV2:
             with patch("requests.get", return_value=_mock_response(page)) as mock_get:
                 mixin.fetch_org_users_v2()
         url = mock_get.call_args[0][0]
-        assert f"/directories/-/users" in url
+        assert "/directories/-/users" in url
 
     def test_search_term_and_mfa_passed(self, mixin):
         page = {"data": [], "links": {}}
