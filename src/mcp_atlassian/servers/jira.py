@@ -3694,7 +3694,8 @@ async def get_permission_scheme_grants(
         str | None,
         Field(
             description=(
-                "Optional permission key or ID to filter by, e.g. 'SET_ISSUE_SECURITY'."
+                "Optional permission key to filter by, e.g. 'SET_ISSUE_SECURITY'. "
+                "Applied after fetching the scheme's grants."
             ),
             default=None,
         ),
@@ -3703,7 +3704,9 @@ async def get_permission_scheme_grants(
     """List the permission grants of a permission scheme.
 
     Use this to find which project roles, groups or users hold a permission
-    such as SET_ISSUE_SECURITY.
+    such as SET_ISSUE_SECURITY. Each grant has an 'id' (for
+    remove_permission_grant), the 'permission' key and a 'holder' with its
+    type, parameter, value and, when known, a readable name.
     """
     jira = await get_jira_fetcher(ctx)
     try:
@@ -3760,13 +3763,17 @@ async def get_jira_task(
         str,
         Field(
             description=(
-                "Task ID, or the full location URL returned by an asynchronous "
-                "operation."
+                "Numeric task ID, or the full location URL returned by an "
+                "asynchronous operation."
             )
         ),
     ],
 ) -> str:
-    """Get the status of an asynchronous Jira REST API task."""
+    """Get the status of an asynchronous Jira REST API task.
+
+    'status' is one of ENQUEUED, RUNNING, COMPLETE, FAILED, CANCEL_REQUESTED,
+    CANCELLED or DEAD; 'progress' is a percentage.
+    """
     jira = await get_jira_fetcher(ctx)
     try:
         return _admin_ok(**jira.get_async_task(task_id))
@@ -3812,7 +3819,7 @@ async def set_permission_grant(
         str,
         Field(
             description=(
-                "Permission key or ID, e.g. 'SET_ISSUE_SECURITY'. Use "
+                "Permission key, e.g. 'SET_ISSUE_SECURITY'. Use "
                 "get_permission_scheme_grants to see what is already granted."
             )
         ),
@@ -3821,22 +3828,36 @@ async def set_permission_grant(
         str,
         Field(
             description=(
-                "Holder type: 'group', 'user', 'projectRole', 'applicationRole' "
-                "or 'internalUser'."
+                "Holder type: 'anyone', 'applicationRole', 'assignee', 'group', "
+                "'groupCustomField', 'projectLead', 'projectRole', 'reporter', "
+                "'user' or 'userCustomField'."
             )
         ),
     ],
     holder_parameter: Annotated[
-        str,
+        str | None,
         Field(
             description=(
-                "Group name, user account ID, project role ID or application role ID."
-            )
+                "Group name, user account ID, project role ID, application role "
+                "key or custom field ID. Not used by 'anyone', 'assignee', "
+                "'projectLead' and 'reporter'."
+            ),
+            default=None,
         ),
-    ],
+    ] = None,
+    holder_value: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Group ID for 'group' (recommended over the name, which can "
+                "change). For other types it equals holder_parameter."
+            ),
+            default=None,
+        ),
+    ] = None,
     dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
 ) -> str:
-    """Grant a permission to a group, user, project role or application role.
+    """Grant a permission to a group, user, project role or similar holder.
 
     The grant applies to every project using the permission scheme.
     """
@@ -3848,6 +3869,7 @@ async def set_permission_grant(
                 permission,
                 holder_type,
                 holder_parameter,
+                holder_value,
                 dry_run=dry_run,
             )
         )
@@ -3935,15 +3957,21 @@ async def set_issue_security_level_member(
         str,
         Field(
             description=(
-                "Member type: 'reporter', 'group', 'user', 'projectrole', "
-                "'applicationRole' or 'allUsers'."
+                "Member type: 'reporter', 'group', 'user', 'projectrole' "
+                "or 'applicationRole'."
             )
         ),
     ],
     parameter: Annotated[
-        str,
-        Field(description="Group name, account ID, role ID or application role ID."),
-    ],
+        str | None,
+        Field(
+            description=(
+                "Group name, account ID, project role ID or application role "
+                "key. Not used by 'reporter'."
+            ),
+            default=None,
+        ),
+    ] = None,
     dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
 ) -> str:
     """Add a member to an issue security level."""
