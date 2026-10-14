@@ -102,6 +102,8 @@ Documentation is also available in [llms.txt format](https://llmstxt.org/), whic
 | `jira_search_statuses` / `jira_update_statuses` - Configure statuses | |
 | `jira_search_workflows` / `jira_update_workflows` - Configure workflows | |
 | `jira_create_screen` / `jira_copy_screen` / `jira_add_screen_tab` / `jira_update_screen_scheme` - Configure screens | |
+| `jira_get_project_permission_scheme` / `jira_get_permission_scheme_grants` / `jira_set_permission_grant` / `jira_remove_permission_grant` / `jira_set_project_permission_scheme` - Inspect and change permission schemes (write tools default to `dry_run=true`) | |
+| `jira_get_issue_security_scheme_for_project` / `jira_get_issue_security_levels` / `jira_get_security_level_members` / `jira_set_issue_security_level_member` / `jira_remove_issue_security_level_member` / `jira_set_default_issue_security_level` / `jira_set_project_issue_security_scheme` / `jira_set_issue_security` / `jira_get_jira_task` - Inspect and change issue security schemes (write tools default to `dry_run=true`) | |
 | `jira_list_automation_rules` / `jira_create_automation_rule` / `jira_update_automation_rule` / `jira_set_automation_rule_state` - Manage automation rules (API token only) | |
 | `jira_search_filters` / `jira_create_filter` / `jira_update_filter` / `jira_set_filter_columns` / `jira_add_filter_share_permission` - Manage saved searches | |
 | `jira_create_dashboard` / `jira_add_gadget` / `jira_update_gadget` / `jira_set_gadget_config` - Build dashboards | |

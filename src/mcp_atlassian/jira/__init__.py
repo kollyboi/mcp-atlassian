@@ -25,6 +25,7 @@ from .worklog import WorklogMixin
 from .boards import BoardsMixin
 from .attachments import AttachmentsMixin
 from .org_admin import OrgAdminMixin
+from .permissions import PermissionsMixin
 from .screens import ScreensMixin
 from .security import SecurityMixin
 from .statuses import StatusesMixin
@@ -51,6 +52,7 @@ class JiraFetcher(
     LinksMixin,
     OrgAdminMixin,
     ScreensMixin,
+    PermissionsMixin,
     SecurityMixin,
     StatusesMixin,
     WorkflowsMixin,

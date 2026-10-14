@@ -2588,8 +2588,9 @@ async def get_security_level_members(
 
     Returns:
         JSON with ``success``, ``level_id``, ``total``, and ``members`` list.
-        Each member has ``type`` (e.g. 'group', 'user', 'projectRole') and ``parameter``
-        (group name, account ID, or role ID).
+        Each member has ``member_id``, ``type`` (e.g. 'group', 'user',
+        'projectRole') and ``parameter`` (group name, account ID, or role ID).
+        ``member_id`` is what remove_issue_security_level_member needs.
 
     Raises:
         ValueError: If the Jira client is not configured or available.
@@ -3647,6 +3648,409 @@ async def get_field_configuration_items(
         return _admin_ok(items=items)
     except Exception as e:
         return _admin_error("get_field_configuration_items", e)
+
+
+# ---------------------------------------------------------------------------
+# Permission scheme and issue security tools.
+# Require the "Administer Jira" global permission. Write tools default to
+# dry_run=true, so they report the current state and the payload that would be
+# sent without changing anything.
+# ---------------------------------------------------------------------------
+
+
+_DRY_RUN_FIELD = Field(
+    description=(
+        "When true (the default), report the current state and the payload that "
+        "would be sent without calling the API. Set false to apply the change."
+    ),
+    default=True,
+)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Project Permission Scheme", "readOnlyHint": True},
+)
+async def get_project_permission_scheme(
+    ctx: Context,
+    project_key: Annotated[str, Field(description="Jira project key.")],
+) -> str:
+    """Get the permission scheme assigned to a Jira project."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(**jira.get_permission_scheme_for_project(project_key))
+    except Exception as e:
+        return _admin_error("get_project_permission_scheme", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Permission Scheme Grants", "readOnlyHint": True},
+)
+async def get_permission_scheme_grants(
+    ctx: Context,
+    scheme_id: Annotated[str, Field(description="Numeric permission scheme ID.")],
+    permission: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional permission key or ID to filter by, e.g. 'SET_ISSUE_SECURITY'."
+            ),
+            default=None,
+        ),
+    ] = None,
+) -> str:
+    """List the permission grants of a permission scheme.
+
+    Use this to find which project roles, groups or users hold a permission
+    such as SET_ISSUE_SECURITY.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(**jira.get_permission_scheme_grants(scheme_id, permission))
+    except Exception as e:
+        return _admin_error("get_permission_scheme_grants", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={
+        "title": "Get Issue Security Scheme For Project",
+        "readOnlyHint": True,
+    },
+)
+async def get_issue_security_scheme_for_project(
+    ctx: Context,
+    project_key: Annotated[str, Field(description="Jira project key.")],
+) -> str:
+    """Get the issue security scheme associated with a Jira project, including its levels."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(**jira.get_issue_security_scheme_for_project(project_key))
+    except Exception as e:
+        return _admin_error("get_issue_security_scheme_for_project", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Issue Security Levels", "readOnlyHint": True},
+)
+async def get_issue_security_levels(
+    ctx: Context,
+    scheme_id: Annotated[str, Field(description="Numeric issue security scheme ID.")],
+) -> str:
+    """List the security levels of an issue security scheme.
+
+    The returned level IDs can be passed to get_security_level_members.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(levels=jira.get_issue_security_levels(scheme_id))
+    except Exception as e:
+        return _admin_error("get_issue_security_levels", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Async Task Status", "readOnlyHint": True},
+)
+async def get_jira_task(
+    ctx: Context,
+    task_id: Annotated[
+        str,
+        Field(
+            description=(
+                "Task ID, or the full location URL returned by an asynchronous "
+                "operation."
+            )
+        ),
+    ],
+) -> str:
+    """Get the status of an asynchronous Jira REST API task."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(**jira.get_async_task(task_id))
+    except Exception as e:
+        return _admin_error("get_jira_task", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Set Project Permission Scheme", "destructiveHint": True},
+)
+@check_write_access
+async def set_project_permission_scheme(
+    ctx: Context,
+    project_key: Annotated[str, Field(description="Jira project key.")],
+    scheme_id: Annotated[str, Field(description="Numeric permission scheme ID.")],
+    dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
+) -> str:
+    """Assign a permission scheme to a Jira project.
+
+    A permission scheme is shared, so this affects every project that uses it.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            **jira.set_project_permission_scheme(
+                project_key, scheme_id, dry_run=dry_run
+            )
+        )
+    except Exception as e:
+        return _admin_error("set_project_permission_scheme", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Set Permission Grant", "destructiveHint": True},
+)
+@check_write_access
+async def set_permission_grant(
+    ctx: Context,
+    scheme_id: Annotated[str, Field(description="Numeric permission scheme ID.")],
+    permission: Annotated[
+        str,
+        Field(
+            description=(
+                "Permission key or ID, e.g. 'SET_ISSUE_SECURITY'. Use "
+                "get_permission_scheme_grants to see what is already granted."
+            )
+        ),
+    ],
+    holder_type: Annotated[
+        str,
+        Field(
+            description=(
+                "Holder type: 'group', 'user', 'projectRole', 'applicationRole' "
+                "or 'internalUser'."
+            )
+        ),
+    ],
+    holder_parameter: Annotated[
+        str,
+        Field(
+            description=(
+                "Group name, user account ID, project role ID or application role ID."
+            )
+        ),
+    ],
+    dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
+) -> str:
+    """Grant a permission to a group, user, project role or application role.
+
+    The grant applies to every project using the permission scheme.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            **jira.set_permission_grant(
+                scheme_id,
+                permission,
+                holder_type,
+                holder_parameter,
+                dry_run=dry_run,
+            )
+        )
+    except Exception as e:
+        return _admin_error("set_permission_grant", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Remove Permission Grant", "destructiveHint": True},
+)
+@check_write_access
+async def remove_permission_grant(
+    ctx: Context,
+    scheme_id: Annotated[str, Field(description="Numeric permission scheme ID.")],
+    grant_id: Annotated[str, Field(description="Numeric ID of the grant to remove.")],
+    dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
+) -> str:
+    """Remove a permission grant from a permission scheme."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            **jira.remove_permission_grant(scheme_id, grant_id, dry_run=dry_run)
+        )
+    except Exception as e:
+        return _admin_error("remove_permission_grant", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Set Project Issue Security Scheme", "destructiveHint": True},
+)
+@check_write_access
+async def set_project_issue_security_scheme(
+    ctx: Context,
+    project_key: Annotated[str, Field(description="Jira project key.")],
+    scheme_id: Annotated[
+        str | None,
+        Field(
+            description="Numeric issue security scheme ID, or null to clear.",
+            default=None,
+        ),
+    ] = None,
+    level_mappings: Annotated[
+        list[dict[str, str]] | None,
+        Field(
+            description=(
+                "Optional remapping as [{'oldLevelId': ..., 'newLevelId': ...}]. "
+                "Unmapped issues lose their security level."
+            ),
+            default=None,
+        ),
+    ] = None,
+    dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
+) -> str:
+    """Associate an issue security scheme with a Jira project.
+
+    This operation is asynchronous. When executed, the response contains a task
+    location; poll it with get_jira_task.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            **jira.set_project_issue_security_scheme(
+                project_key,
+                scheme_id,
+                level_mappings,
+                dry_run=dry_run,
+            )
+        )
+    except Exception as e:
+        return _admin_error("set_project_issue_security_scheme", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Set Issue Security Level Member", "destructiveHint": True},
+)
+@check_write_access
+async def set_issue_security_level_member(
+    ctx: Context,
+    scheme_id: Annotated[str, Field(description="Numeric issue security scheme ID.")],
+    level_id: Annotated[str, Field(description="Numeric issue security level ID.")],
+    member_type: Annotated[
+        str,
+        Field(
+            description=(
+                "Member type: 'reporter', 'group', 'user', 'projectrole', "
+                "'applicationRole' or 'allUsers'."
+            )
+        ),
+    ],
+    parameter: Annotated[
+        str,
+        Field(description="Group name, account ID, role ID or application role ID."),
+    ],
+    dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
+) -> str:
+    """Add a member to an issue security level."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            **jira.set_issue_security_level_member(
+                scheme_id, level_id, member_type, parameter, dry_run=dry_run
+            )
+        )
+    except Exception as e:
+        return _admin_error("set_issue_security_level_member", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={
+        "title": "Remove Issue Security Level Member",
+        "destructiveHint": True,
+    },
+)
+@check_write_access
+async def remove_issue_security_level_member(
+    ctx: Context,
+    scheme_id: Annotated[str, Field(description="Numeric issue security scheme ID.")],
+    level_id: Annotated[str, Field(description="Numeric issue security level ID.")],
+    member_id: Annotated[
+        str,
+        Field(
+            description=(
+                "Numeric member ID, from get_security_level_members "
+                "(field 'member_id')."
+            )
+        ),
+    ],
+    dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
+) -> str:
+    """Remove a member from an issue security level."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            **jira.remove_issue_security_level_member(
+                scheme_id, level_id, member_id, dry_run=dry_run
+            )
+        )
+    except Exception as e:
+        return _admin_error("remove_issue_security_level_member", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Set Default Issue Security Level", "destructiveHint": True},
+)
+@check_write_access
+async def set_default_issue_security_level(
+    ctx: Context,
+    scheme_id: Annotated[str, Field(description="Numeric issue security scheme ID.")],
+    level_id: Annotated[
+        str | None,
+        Field(
+            description="Numeric issue security level ID, or null to reset.",
+            default=None,
+        ),
+    ] = None,
+    dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
+) -> str:
+    """Set the default issue security level for an issue security scheme."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            **jira.set_default_issue_security_level(
+                scheme_id, level_id, dry_run=dry_run
+            )
+        )
+    except Exception as e:
+        return _admin_error("set_default_issue_security_level", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write"},
+    annotations={"title": "Set Issue Security", "destructiveHint": True},
+)
+@check_write_access
+async def set_issue_security(
+    ctx: Context,
+    issue_key: Annotated[str, Field(description="Jira issue key, e.g. 'PROJECT-123'.")],
+    level_id: Annotated[
+        str | None,
+        Field(
+            description="Numeric issue security level ID, or null to clear.",
+            default=None,
+        ),
+    ] = None,
+    dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
+) -> str:
+    """Set the security level of a single issue.
+
+    This is the operation that requires the SET_ISSUE_SECURITY permission in the
+    project's permission scheme.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            **jira.set_issue_security(issue_key, level_id, dry_run=dry_run)
+        )
+    except Exception as e:
+        return _admin_error("set_issue_security", e)
 
 
 # ---------------------------------------------------------------------------
