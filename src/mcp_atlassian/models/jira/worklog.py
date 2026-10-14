@@ -70,7 +70,7 @@ class JiraWorklog(ApiModel, TimestampMixin):
             time_spent_seconds = (
                 int(time_spent_seconds) if time_spent_seconds is not None else 0
             )
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             time_spent_seconds = 0
 
         return cls(

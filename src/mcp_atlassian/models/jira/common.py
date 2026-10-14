@@ -119,7 +119,7 @@ class JiraStatusCategory(ApiModel):
         try:
             # Ensure id is an integer
             id_value = int(id_value) if id_value is not None else 0
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             id_value = 0
 
         return cls(
@@ -326,7 +326,7 @@ class JiraAttachment(ApiModel):
         size = data.get("size", 0)
         try:
             size = int(size) if size is not None else 0
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             size = 0
 
         return cls(

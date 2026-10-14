@@ -89,7 +89,7 @@ class TimestampMixin:
 
             dt = datetime.fromisoformat(ts)
             return dt.strftime("%Y-%m-%d %H:%M:%S")
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return timestamp or EMPTY_STRING
 
     @staticmethod
@@ -122,5 +122,5 @@ class TimestampMixin:
 
             datetime.fromisoformat(ts)
             return True
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return False

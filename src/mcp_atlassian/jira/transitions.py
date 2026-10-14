@@ -333,7 +333,7 @@ class TransitionsMixin(JiraClient, IssueOperationsProto, UsersOperationsProto):
                         return int(first_value)
                     else:
                         return str(first_value)
-            except (StopIteration, AttributeError):
+            except StopIteration, AttributeError:
                 pass
 
             # Nothing worked, return a default

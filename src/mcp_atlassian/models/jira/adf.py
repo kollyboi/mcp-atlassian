@@ -61,7 +61,7 @@ def adf_to_text(adf_content: dict | list | str | None) -> str | None:
                 try:
                     dt = datetime.fromtimestamp(int(timestamp) / 1000, tz=UTC)
                     return dt.strftime("%Y-%m-%d")
-                except (ValueError, OSError, TypeError):
+                except ValueError, OSError, TypeError:
                     return str(timestamp)
             return ""
 

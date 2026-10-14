@@ -478,7 +478,7 @@ class OrgAdminMixin(JiraClient):
                 if last_access is None or dt > last_access:
                     last_access = dt
                     last_product = entry.get("productKey")
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
 
         if last_access is None:
