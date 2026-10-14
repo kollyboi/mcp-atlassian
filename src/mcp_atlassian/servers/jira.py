@@ -2589,7 +2589,9 @@ async def get_security_level_members(
     Returns:
         JSON with ``success``, ``level_id``, ``total``, and ``members`` list.
         Each member has ``member_id``, ``type`` (e.g. 'group', 'user',
-        'projectRole') and ``parameter`` (group name, account ID, or role ID).
+        'projectRole'), ``parameter`` (group name, account ID, or role ID),
+        ``value`` (group ID for groups, otherwise the same as ``parameter``)
+        and ``name`` (readable name of the group, role or user).
         ``member_id`` is what remove_issue_security_level_member needs.
 
     Raises:
