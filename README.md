@@ -98,6 +98,7 @@ Documentation is also available in [llms.txt format](https://llmstxt.org/), whic
 | `jira_search_users` - Find user account IDs | |
 | `jira_create_field` / `jira_create_field_context` - Configure custom fields | |
 | `jira_get_field_options` / `jira_add_field_options` - Maintain select options | |
+| `jira_get_field_context_defaults` / `jira_set_field_context_default` - Read and set field context defaults | |
 | `jira_search_statuses` / `jira_update_statuses` - Configure statuses | |
 | `jira_search_workflows` / `jira_update_workflows` - Configure workflows | |
 | `jira_create_screen` / `jira_copy_screen` / `jira_add_screen_tab` / `jira_update_screen_scheme` - Configure screens | |

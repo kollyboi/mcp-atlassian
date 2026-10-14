@@ -715,6 +715,80 @@ class ScreensMixin(JiraClient):
         return self._expect_dict(self.jira.put(endpoint, data=payload), endpoint)
 
     # ------------------------------------------------------------------
+    # Custom field context default values
+    # ------------------------------------------------------------------
+
+    def get_field_context_defaults(
+        self, field_id: str, context_ids: list[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Get default values grouped by custom field context.
+
+        Args:
+            field_id: Custom field ID.
+            context_ids: Optional context IDs to filter by.
+
+        Returns:
+            A list of context default-value objects. Contexts without a
+            configured default may not be present in the response.
+        """
+        field = _require_id("field_id", field_id)
+        params: dict[str, Any] | None = None
+        if context_ids:
+            params = {
+                "contextId": [
+                    _require_id("context_id", context) for context in context_ids
+                ]
+            }
+        endpoint = f"rest/api/3/field/{field}/context/defaultValues"
+        return self._get_all_pages(endpoint, params=params)
+
+    def set_field_context_default(
+        self,
+        field_id: str,
+        context_id: str,
+        default_value: dict[str, Any] | None,
+        *,
+        issue_type_id: str | None = None,
+    ) -> None:
+        """Set or remove a custom field context default value.
+
+        Only the supplied context default target is changed. Passing
+        ``None`` as ``default_value`` removes the default by sending
+        ``value: null``. If ``issue_type_id`` is supplied, the target is the
+        default for that issue type; otherwise it is the context catch-all.
+
+        Args:
+            field_id: Custom field ID.
+            context_id: Field context ID.
+            default_value: Default value object matching the custom field
+                type, or ``None`` to remove the default.
+            issue_type_id: Optional issue type ID. If omitted, update the
+                context catch-all default.
+
+        Raises:
+            ValueError: If ``default_value`` is not an object or its type is
+                missing, or if an identifier is invalid.
+        """
+        field = _require_id("field_id", field_id)
+        context = _require_id("context_id", context_id)
+        if default_value is not None and not isinstance(default_value, dict):
+            raise ValueError("default_value must be an object or null")
+        if isinstance(default_value, dict) and not default_value.get("type"):
+            raise ValueError("default_value must contain a 'type' key")
+        if not context.isdigit():
+            raise ValueError("context_id must be numeric")
+
+        target: dict[str, Any] = {"contextId": int(context)}
+        if issue_type_id is None:
+            target["isAnyIssueType"] = True
+        else:
+            target["issueTypeId"] = _require_id("issue_type_id", issue_type_id)
+        target["value"] = default_value
+        payload = {"defaultValues": [target]}
+        endpoint = f"rest/api/3/field/{field}/context/defaultValues"
+        self.jira.put(endpoint, data=payload)
+
+    # ------------------------------------------------------------------
     # Fields and field configurations
     # ------------------------------------------------------------------
 

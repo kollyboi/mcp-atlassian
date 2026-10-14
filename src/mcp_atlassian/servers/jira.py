@@ -2630,7 +2630,7 @@ def _split_csv(value: str) -> list[str]:
     return [x.strip() for x in value.split(",") if x.strip()]
 
 
-def _admin_error(tool: str, e: Exception) -> str:
+def _admin_error(tool: str, e: Exception, *, extra_403_hint: str | None = None) -> str:
     """Format an error from a screen/field admin tool as a JSON string."""
     if isinstance(e, ValueError | TypeError):
         message = str(e)
@@ -2643,6 +2643,8 @@ def _admin_error(tool: str, e: Exception) -> str:
             if status in (401, 403)
             else ""
         )
+        if status == 403 and extra_403_hint:
+            hint += f"; {extra_403_hint}"
         message = f"API error {status}{hint}: {e}"
         logger.error(f"HTTP error in {tool}: {e}", exc_info=True)
     else:
@@ -2801,6 +2803,93 @@ async def reorder_field_options(
         )
     except Exception as e:
         return _admin_error("reorder_field_options", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin"},
+    annotations={"title": "Get Field Context Defaults", "readOnlyHint": True},
+)
+async def get_field_context_defaults(
+    ctx: Context,
+    field_id: Annotated[str, Field(description="Custom field ID.")],
+    context_ids: Annotated[
+        str,
+        Field(
+            description=(
+                "Optional comma-separated context IDs. Omit to read all contexts."
+            ),
+            default="",
+        ),
+    ] = "",
+) -> str:
+    """Read custom field default values grouped by context."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            defaults=jira.get_field_context_defaults(
+                field_id, _split_csv(context_ids) or None
+            )
+        )
+    except Exception as e:
+        return _admin_error("get_field_context_defaults", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Set Field Context Default", "destructiveHint": True},
+)
+@check_write_access
+async def set_field_context_default(
+    ctx: Context,
+    field_id: Annotated[str, Field(description="Custom field ID.")],
+    context_id: Annotated[str, Field(description="Custom field context ID.")],
+    default_value: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description=(
+                "Default value object matching the field type. For a user "
+                "field, reuse the value object returned by "
+                "jira_get_field_context_defaults. Pass null to remove the "
+                "default."
+            )
+        ),
+    ],
+    issue_type_id: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional issue type ID. Omit for the context catch-all default."
+            ),
+            default=None,
+        ),
+    ] = None,
+) -> str:
+    """Set or remove a custom field context's default value."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        jira.set_field_context_default(
+            field_id,
+            context_id,
+            default_value,
+            issue_type_id=issue_type_id,
+        )
+        action = "default_removed" if default_value is None else "default_set"
+        return _admin_ok(
+            action=action,
+            context_id=context_id,
+            issue_type_id=issue_type_id,
+        )
+    except HTTPError as e:
+        return _admin_error(
+            "set_field_context_default",
+            e,
+            extra_403_hint=(
+                "the defaultValues PUT endpoint is EAP-only (CHANGE-3082); "
+                "the tenant may not be enrolled"
+            ),
+        )
+    except Exception as e:
+        return _admin_error("set_field_context_default", e)
 
 
 @jira_mcp.tool(

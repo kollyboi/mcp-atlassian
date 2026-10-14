@@ -399,6 +399,90 @@ class TestFieldOptions:
         }
 
 
+class TestFieldContextDefaults:
+    def test_get_defaults_sends_context_ids_and_follows_pages(self, mixin):
+        mixin.jira.get.side_effect = [
+            _page(
+                [{"contextId": 10776, "defaultValues": []}],
+                is_last=False,
+            ),
+            _page([{"contextId": 10740, "defaultValues": []}]),
+        ]
+
+        result = mixin.get_field_context_defaults("customfield_1", ["10776", "10740"])
+
+        assert [item["contextId"] for item in result] == [10776, 10740]
+        queries = _queries(mixin.jira.get)
+        assert queries[0][0].endswith("/field/customfield_1/context/defaultValues")
+        assert queries[0][1]["contextId"] == ["10776", "10740"]
+        assert queries[1][1]["startAt"] == ["1"]
+
+    def test_get_defaults_without_context_filter(self, mixin):
+        mixin.jira.get.return_value = _page([])
+
+        assert mixin.get_field_context_defaults("customfield_1") == []
+
+        _, query = _queries(mixin.jira.get)[0]
+        assert "contextId" not in query
+
+    def test_set_catch_all_default(self, mixin):
+        value = {
+            "type": "single.user.select",
+            "accountId": "account-1",
+            "userFilter": {"enabled": False},
+        }
+
+        mixin.set_field_context_default("customfield_1", "10776", value)
+
+        mixin.jira.put.assert_called_once_with(
+            "rest/api/3/field/customfield_1/context/defaultValues",
+            data={
+                "defaultValues": [
+                    {"contextId": 10776, "isAnyIssueType": True, "value": value}
+                ]
+            },
+        )
+
+    def test_null_default_removes_value(self, mixin):
+        mixin.set_field_context_default("customfield_1", "10776", None)
+
+        payload = mixin.jira.put.call_args.kwargs["data"]
+        assert payload["defaultValues"][0]["value"] is None
+
+    def test_set_issue_type_default(self, mixin):
+        value = {"type": "single.user.select", "accountId": "account-1"}
+
+        mixin.set_field_context_default(
+            "customfield_1", "10776", value, issue_type_id="10157"
+        )
+
+        assert mixin.jira.put.call_args.kwargs["data"] == {
+            "defaultValues": [
+                {
+                    "contextId": 10776,
+                    "issueTypeId": "10157",
+                    "value": value,
+                }
+            ]
+        }
+
+    @pytest.mark.parametrize(
+        "value, message",
+        [("not-an-object", "object or null"), ({}, "'type'")],
+    )
+    def test_set_default_validates_value(self, mixin, value, message):
+        with pytest.raises(ValueError, match=message):
+            mixin.set_field_context_default("customfield_1", "10776", value)
+        mixin.jira.put.assert_not_called()
+
+    def test_set_default_requires_numeric_context_id(self, mixin):
+        with pytest.raises(ValueError, match="numeric"):
+            mixin.set_field_context_default(
+                "customfield_1", "context-1", {"type": "textfield", "value": "x"}
+            )
+        mixin.jira.put.assert_not_called()
+
+
 class TestFields:
     def test_create_custom_field_invalidates_cache(self, mixin):
         mixin._field_ids_cache = [{"id": "summary"}]
@@ -461,6 +545,15 @@ WRITE_TOOLS = [
     ("add_screen_tab", {"screen_id": "1", "tab_name": "n"}),
     ("copy_screen", {"source_screen_id": "1", "new_name": "n"}),
     ("update_screen_scheme", {"screen_scheme_id": "1", "name": "n"}),
+    (
+        "set_field_context_default",
+        {
+            "field_id": "f",
+            "context_id": "1",
+            "default_value": None,
+            "issue_type_id": None,
+        },
+    ),
 ]
 
 
@@ -524,3 +617,37 @@ class TestServerTools:
         fetcher.get_project_screen_schemes.assert_called_once_with(
             ["BB5", "BB6"], include_screens=True
         )
+
+    async def test_field_context_defaults_splits_csv(self):
+        from mcp_atlassian.servers import jira as server
+
+        fetcher = MagicMock()
+        fetcher.get_field_context_defaults.return_value = []
+        with patch.object(server, "get_jira_fetcher", AsyncMock(return_value=fetcher)):
+            await server.get_field_context_defaults.fn(
+                MagicMock(), field_id="customfield_1", context_ids="10740, 10776,"
+            )
+        fetcher.get_field_context_defaults.assert_called_once_with(
+            "customfield_1", ["10740", "10776"]
+        )
+
+    async def test_set_field_context_default_reports_eap_on_forbidden(self):
+        from requests.exceptions import HTTPError
+
+        from mcp_atlassian.servers import jira as server
+
+        response = MagicMock(status_code=403)
+        fetcher = MagicMock()
+        fetcher.set_field_context_default.side_effect = HTTPError(
+            "Forbidden", response=response
+        )
+        with patch.object(server, "get_jira_fetcher", AsyncMock(return_value=fetcher)):
+            out = await server.set_field_context_default.fn(
+                MagicMock(),
+                field_id="customfield_1",
+                context_id="10776",
+                default_value=None,
+            )
+        data = json.loads(out)
+        assert data["success"] is False
+        assert "EAP-only" in data["error"]
