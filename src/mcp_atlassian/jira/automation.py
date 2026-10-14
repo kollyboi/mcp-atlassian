@@ -151,9 +151,7 @@ class AutomationMixin(JiraClient):
         payload: dict[str, Any] = {"rule": rule, "connections": connections or []}
         logger.info(f"Creating automation rule '{rule.get('name', '<unnamed>')}'")
         return self._expect_automation_dict(
-            self.jira.post(
-                self._automation_url("rule"), json=payload, absolute=True
-            ),
+            self.jira.post(self._automation_url("rule"), json=payload, absolute=True),
             "rule",
         )
 
@@ -210,10 +208,10 @@ class AutomationMixin(JiraClient):
             f"rule/{uuid}/state",
         )
 
-    def _expect_automation_dict(
-        self, response: Any, endpoint: str
-    ) -> dict[str, Any]:
+    def _expect_automation_dict(self, response: Any, endpoint: str) -> dict[str, Any]:
         if not isinstance(response, dict):
-            msg = f"Unexpected response type from automation {endpoint}: {type(response)}"
+            msg = (
+                f"Unexpected response type from automation {endpoint}: {type(response)}"
+            )
             raise TypeError(msg)
         return response

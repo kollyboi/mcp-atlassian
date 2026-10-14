@@ -191,9 +191,7 @@ class FiltersMixin(JiraClient):
             raise ValueError("columns must contain at least one column")
         fid = _require_id("filter_id", filter_id)
         logger.info(f"Setting columns for filter {fid}")
-        self.jira.put(
-            f"rest/api/3/filter/{fid}/columns", data={"columns": columns}
-        )
+        self.jira.put(f"rest/api/3/filter/{fid}/columns", data={"columns": columns})
 
     def add_filter_share_permission(
         self,
@@ -245,15 +243,11 @@ class FiltersMixin(JiraClient):
         if project_id is not None:
             payload["projectId"] = _require_id("project_id", project_id)
         if project_role_id is not None:
-            payload["projectRoleId"] = _require_id(
-                "project_role_id", project_role_id
-            )
+            payload["projectRoleId"] = _require_id("project_role_id", project_role_id)
         if rights is not None:
             payload["rights"] = rights
         logger.info(f"Adding {permission_type} share permission to filter {fid}")
-        response = self.jira.post(
-            f"rest/api/3/filter/{fid}/permission", json=payload
-        )
+        response = self.jira.post(f"rest/api/3/filter/{fid}/permission", json=payload)
         if not isinstance(response, dict):
             msg = f"Unexpected response type from share permission: {type(response)}"
             raise TypeError(msg)

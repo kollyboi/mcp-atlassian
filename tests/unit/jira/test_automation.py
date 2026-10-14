@@ -78,9 +78,7 @@ class TestAutomationRules:
 
     def test_list_with_filter_uses_post(self, mixin):
         mixin._cloud_id = "abc-123"
-        mixin.jira.post.return_value = _summary(
-            [], next_link="?cursor=next&limit=2"
-        )
+        mixin.jira.post.return_value = _summary([], next_link="?cursor=next&limit=2")
 
         result = mixin.list_automation_rules(limit=2, state="ENABLED", cursor="cur")
 
@@ -182,8 +180,8 @@ class TestServerTools:
         from mcp_atlassian.servers import jira as server
 
         fetcher = MagicMock()
-        fetcher.list_automation_rules.side_effect = (
-            MCPAtlassianAuthenticationError("not available for OAuth")
+        fetcher.list_automation_rules.side_effect = MCPAtlassianAuthenticationError(
+            "not available for OAuth"
         )
         with patch.object(server, "get_jira_fetcher", AsyncMock(return_value=fetcher)):
             out = await server.list_automation_rules.fn(MagicMock())

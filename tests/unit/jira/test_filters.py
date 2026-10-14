@@ -35,9 +35,7 @@ class TestFilterReads:
     def test_search_with_substring_match_and_owner(self, mixin):
         mixin.jira.get.return_value = {"values": [], "total": 0, "isLast": True}
 
-        mixin.search_filters(
-            "BB5", substring_match=True, owner="someone@example.com"
-        )
+        mixin.search_filters("BB5", substring_match=True, owner="someone@example.com")
 
         mixin.jira.get.assert_called_once_with(
             "rest/api/3/filter/search",
