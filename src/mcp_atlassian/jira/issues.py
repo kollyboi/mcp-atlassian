@@ -1,5 +1,6 @@
 """Module for Jira issue operations."""
 
+import json
 import logging
 from collections import defaultdict
 from typing import Any
@@ -1655,3 +1656,82 @@ class IssuesMixin(
         ]
 
         return issues
+
+    def get_issue_properties(
+        self,
+        issue_id_or_key: str,
+        property_key: str | None = None,
+        max_length: int = 15000,
+    ) -> dict[str, Any]:
+        """Get all property keys or a specific property value for an issue.
+
+        Args:
+            issue_id_or_key: The issue key (e.g. 'SST-223') or issue ID.
+            property_key: Optional property key. If omitted, returns all available
+                property keys for this issue. If provided, returns the property value.
+            max_length: Maximum character length for serialized JSON property values.
+                Larger responses are truncated with `truncated: True`.
+
+        Returns:
+            Dictionary with issue properties data.
+        """
+        if not issue_id_or_key:
+            raise ValueError("Issue ID or key is required")
+
+        if property_key:
+            endpoint = f"rest/api/3/issue/{issue_id_or_key}/properties/{property_key}"
+            try:
+                response = self.jira.get(endpoint)
+            except HTTPError as e:
+                if e.response is not None and e.response.status_code == 404:
+                    raise ValueError(
+                        f"Ikke funnet: egenskapen '{property_key}' eller saken '{issue_id_or_key}' finnes ikke."
+                    ) from e
+                if e.response is not None and e.response.status_code == 403:
+                    raise PermissionError(
+                        f"Ikke tillatt for denne brukeren: mangler tilgang til sak '{issue_id_or_key}' eller egenskapen."
+                    ) from e
+                raise
+
+            if not isinstance(response, dict):
+                raise TypeError(
+                    f"Unexpected response type from Jira API: {type(response)}"
+                )
+
+            value = response.get("value")
+            truncated = False
+            val_json = json.dumps(value, ensure_ascii=False)
+            if len(val_json) > max_length:
+                truncated = True
+                value = {"_truncated_preview": val_json[:max_length] + "..."}
+
+            return {
+                "issue": issue_id_or_key,
+                "key": property_key,
+                "value": value,
+                "truncated": truncated,
+            }
+
+        endpoint = f"rest/api/3/issue/{issue_id_or_key}/properties"
+        try:
+            response = self.jira.get(endpoint)
+        except HTTPError as e:
+            if e.response is not None and e.response.status_code == 404:
+                raise ValueError(
+                    f"Ikke funnet: saken '{issue_id_or_key}' finnes ikke."
+                ) from e
+            if e.response is not None and e.response.status_code == 403:
+                raise PermissionError(
+                    f"Ikke tillatt for denne brukeren: mangler lesetilgang til sak '{issue_id_or_key}'."
+                ) from e
+            raise
+
+        if not isinstance(response, dict):
+            raise TypeError(f"Unexpected response type from Jira API: {type(response)}")
+
+        keys = [item["key"] for item in response.get("keys", []) if "key" in item]
+        return {
+            "issue": issue_id_or_key,
+            "keys": keys,
+            "total_keys": len(keys),
+        }

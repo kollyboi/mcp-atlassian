@@ -8,7 +8,14 @@ gadgets whose configuration is managed through dashboard item properties
 """
 
 import logging
+from copy import copy
 from typing import Any
+
+from requests.adapters import HTTPAdapter
+from requests.exceptions import HTTPError, RequestException
+from urllib3.util.retry import Retry
+
+from mcp_atlassian.exceptions import MCPAtlassianAuthenticationError
 
 from .client import JiraClient
 from .screens import _require_id
@@ -72,6 +79,228 @@ class DashboardsMixin(JiraClient):
             msg = f"Unexpected response type from {endpoint}: {type(response)}"
             raise TypeError(msg)
         return response
+
+    def change_dashboard_owner(
+        self,
+        dashboard_id: str,
+        new_owner_account_id: str,
+        *,
+        use_admin_permissions: bool = False,
+        autofix_name: bool = False,
+        expected_owner_account_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Change a Cloud dashboard owner once and verify the observed owner.
+
+        Args:
+            dashboard_id: Numeric dashboard ID.
+            new_owner_account_id: Target Atlassian account ID.
+            use_admin_permissions: Explicitly use Administer Jira permission.
+            autofix_name: Allow Jira to rename a duplicate dashboard name.
+            expected_owner_account_id: Optional preflight owner assertion. This
+                is not an atomic concurrency guard.
+
+        Returns:
+            A confirmed, rejected, or indeterminate outcome, a stable local code,
+            and observed owner IDs. ``changed`` is null when indeterminate; no
+            automatic write retries or flag escalation are performed.
+        """
+        result: dict[str, Any] = {
+            "success": False,
+            "outcome": "rejected",
+            "changed": False,
+            "dashboard_id": dashboard_id,
+            "requested_owner_account_id": new_owner_account_id,
+            "previous_owner_account_id": None,
+            "observed_owner_account_id": None,
+        }
+
+        def finish(outcome: str, code: str, message: str) -> dict[str, Any]:
+            result.update(outcome=outcome, code=code, message=message)
+            result["success"] = outcome == "confirmed"
+            result["changed"] = None if outcome == "indeterminate" else False
+            return result
+
+        if not self.config.is_cloud:
+            return finish(
+                "rejected",
+                "cloud_only",
+                "Dashboard ownership changes support Jira Cloud only, not Server/DC.",
+            )
+        if (
+            not isinstance(dashboard_id, str)
+            or not dashboard_id.isascii()
+            or not dashboard_id.isdecimal()
+            or len(dashboard_id) > 19
+            or not 0 < int(dashboard_id) <= 2**63 - 1
+            or not isinstance(new_owner_account_id, str)
+            or not new_owner_account_id.strip()
+            or new_owner_account_id != new_owner_account_id.strip()
+            or not isinstance(use_admin_permissions, bool)
+            or not isinstance(autofix_name, bool)
+            or (
+                expected_owner_account_id is not None
+                and (
+                    not isinstance(expected_owner_account_id, str)
+                    or not expected_owner_account_id.strip()
+                    or expected_owner_account_id != expected_owner_account_id.strip()
+                )
+            )
+        ):
+            return finish("rejected", "invalid_input", "Invalid ownership parameters.")
+        did = str(int(dashboard_id))
+        result["dashboard_id"] = did
+
+        def owner_of(dashboard: dict[str, Any]) -> str | None:
+            owner = dashboard.get("owner")
+            account_id = owner.get("accountId") if isinstance(owner, dict) else None
+            return account_id if isinstance(account_id, str) and account_id else None
+
+        try:
+            previous = owner_of(self.get_dashboard(did))
+        except (
+            RequestException,
+            MCPAtlassianAuthenticationError,
+            ValueError,
+            TypeError,
+            RuntimeError,
+        ):
+            # The client can raise transport, authentication, or decoding errors.
+            # Never expose exception text, URLs, or Jira response bodies.
+            return finish(
+                "rejected",
+                "dashboard_read_failed",
+                "Could not read the dashboard; no ownership write was attempted.",
+            )
+        result["previous_owner_account_id"] = previous
+        result["observed_owner_account_id"] = previous
+        if previous is None:
+            return finish(
+                "rejected",
+                "owner_unavailable",
+                "The dashboard owner account ID is unavailable; no write attempted.",
+            )
+        if (
+            expected_owner_account_id is not None
+            and previous != expected_owner_account_id
+        ):
+            return finish(
+                "rejected",
+                "owner_precondition_failed",
+                "Observed owner does not match the expected owner; no write attempted.",
+            )
+        if previous == new_owner_account_id:
+            return finish(
+                "confirmed", "already_owner", "The requested owner is confirmed."
+            )
+
+        # Borrow connection pools/authentication, but isolate retry policy from
+        # the shared client and session. Do not close these borrowed pools.
+        client = copy(self.jira)
+        client.retry_with_header = False
+        client.backoff_and_retry = False
+        client._session = copy(self.jira._session)
+        client._session.cookies = copy(self.jira._session.cookies)
+        client._session.adapters = dict(self.jira._session.adapters)
+        for prefix, adapter in client._session.adapters.items():
+            if not isinstance(adapter, HTTPAdapter):
+                return finish(
+                    "rejected",
+                    "unsupported_transport",
+                    "Cannot disable transport retries; no ownership write attempted.",
+                )
+            # HTTPAdapter's pickle hooks rebuild pools during copy(), so
+            # explicitly restore the borrowed pools without closing them.
+            local_adapter = copy(adapter)
+            local_adapter.poolmanager = adapter.poolmanager
+            local_adapter.proxy_manager = adapter.proxy_manager
+            local_adapter.max_retries = Retry(total=0, redirect=0)
+            client._session.adapters[prefix] = local_adapter
+
+        rejected = False
+        try:
+            raw_response = client.request(
+                "PUT",
+                "rest/api/3/dashboard/bulk/edit",
+                data={
+                    "action": "changeOwner",
+                    "entityIds": [int(did)],
+                    "changeOwnerDetails": {
+                        "newOwner": new_owner_account_id,
+                        "autofixName": autofix_name,
+                    },
+                    "extendAdminPermissions": use_admin_permissions,
+                },
+                allow_redirects=False,
+            )
+            if raw_response.is_redirect or raw_response.is_permanent_redirect:
+                raise HTTPError(response=raw_response)
+            response = raw_response.json()
+            # A 200 response can contain a per-dashboard rejection. Do not infer
+            # causes (duplicate name, inactive user, permissions) from prose.
+            errors = (
+                response.get("entityErrors") if isinstance(response, dict) else None
+            )
+            rejected = isinstance(errors, dict) and bool(errors.get(did))
+            if rejected:
+                result["http_status"] = 200
+        except HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if isinstance(status, int):
+                result["http_status"] = status
+                rejected = 400 <= status < 500 and status not in (408, 429)
+        except (
+            RequestException,
+            MCPAtlassianAuthenticationError,
+            ValueError,
+            TypeError,
+            RuntimeError,
+        ):
+            # A lost response is not evidence that the write did not happen.
+            logger.warning(
+                "Dashboard ownership write response unavailable; verifying once"
+            )
+
+        # Exactly one verification read even if the write raised or returned
+        # entityErrors. Never repeat a write or change caller-selected flags.
+        result["observed_owner_account_id"] = None
+        try:
+            raw_response = client.request(
+                "GET", f"rest/api/3/dashboard/{did}", allow_redirects=False
+            )
+            if raw_response.is_redirect or raw_response.is_permanent_redirect:
+                raise HTTPError(response=raw_response)
+            dashboard = raw_response.json()
+            if not isinstance(dashboard, dict):
+                raise TypeError("Unexpected dashboard response type")
+            observed = owner_of(dashboard)
+        except (
+            RequestException,
+            MCPAtlassianAuthenticationError,
+            ValueError,
+            TypeError,
+            RuntimeError,
+        ):
+            return finish(
+                "indeterminate",
+                "verification_read_failed",
+                "Ownership write attempted, but verification failed. Do not retry blindly.",
+            )
+        result["observed_owner_account_id"] = observed
+        if observed == new_owner_account_id:
+            finish("confirmed", "owner_confirmed", "The requested owner is confirmed.")
+            result["changed"] = True
+            return result
+        if rejected and observed == previous:
+            return finish(
+                "rejected",
+                "jira_rejected",
+                "Jira rejected the ownership request; the previous owner was observed.",
+            )
+        return finish(
+            "indeterminate",
+            "owner_not_confirmed",
+            "Requested owner not confirmed after the write attempt. Do not retry blindly.",
+        )
 
     def get_dashboard_gadgets(self, dashboard_id: str) -> list[dict[str, Any]]:
         """Get the gadgets on a dashboard.

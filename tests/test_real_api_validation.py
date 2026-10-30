@@ -46,6 +46,25 @@ from mcp_atlassian.models.jira import JiraIssueLinkType
 from mcp_atlassian.servers import main_mcp
 
 
+@pytest.fixture(autouse=True)
+def require_real_api_configuration(request: pytest.FixtureRequest) -> None:
+    """Skip before client setup unless real API tests are explicitly configured."""
+    if not request.config.getoption("--use-real-data"):
+        pytest.skip("Real API testing requires --use-real-data")
+
+    required_variables = (
+        "JIRA_URL",
+        "JIRA_USERNAME",
+        "JIRA_API_TOKEN",
+        "CONFLUENCE_URL",
+        "CONFLUENCE_USERNAME",
+        "CONFLUENCE_API_TOKEN",
+    )
+    missing = [name for name in required_variables if not os.environ.get(name)]
+    if missing:
+        pytest.skip("Missing real API configuration: " + ", ".join(missing))
+
+
 # Resource tracking for cleanup
 class ResourceTracker:
     """Tracks resources created during tests for cleanup."""
@@ -214,7 +233,7 @@ def cleanup_resources(
 pytestmark = pytest.mark.anyio(backends=["asyncio"])
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture
 async def api_validation_client():
     """Provides a FastMCP client connected to the main server for tool calls."""
     transport = FastMCPTransport(main_mcp)

@@ -1,7 +1,37 @@
 import io
 import logging
+from collections.abc import Iterator
+
+import pytest
 
 from mcp_atlassian.utils.logging import setup_logging
+
+
+@pytest.fixture(autouse=True)
+def restore_logging_state() -> Iterator[None]:
+    """Restore logger levels and handlers changed by setup_logging tests."""
+    loggers = [
+        logging.getLogger(name)
+        for name in (
+            None,
+            "mcp-atlassian",
+            "mcp.server",
+            "mcp.server.lowlevel.server",
+            "mcp-jira",
+        )
+    ]
+    states = [(logger, logger.level, logger.handlers[:]) for logger in loggers]
+    try:
+        yield
+    finally:
+        for logger, level, handlers in states:
+            for handler in logger.handlers[:]:
+                logger.removeHandler(handler)
+                if handler not in handlers:
+                    handler.close()
+            for handler in handlers:
+                logger.addHandler(handler)
+            logger.setLevel(level)
 
 
 def test_setup_logging_default_level():

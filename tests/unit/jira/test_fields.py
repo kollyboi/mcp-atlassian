@@ -540,3 +540,88 @@ class TestFieldsMixin:
 
         # Verify empty list is returned on error
         assert result == []
+
+    def test_get_field_screens_by_id(self, fields_mixin: FieldsMixin):
+        """Test get_field_screens using customfield ID."""
+        fields_mixin.get_fields = MagicMock(
+            return_value=[
+                {"id": "customfield_10186", "name": "Fag"},
+                {"id": "customfield_10199", "name": "Fag"},
+            ]
+        )
+
+        def mock_get(url):
+            if url == "rest/api/3/field/customfield_10186/screens":
+                return {
+                    "values": [{"id": 10288, "name": "SST - Risk - screen"}],
+                    "total": 1,
+                }
+            if url == "rest/api/3/screens/10288/tabs":
+                return [{"id": 10303, "name": "Field Tab"}]
+            if url == "rest/api/3/screens/10288/tabs/10303/fields":
+                return [{"id": "customfield_10186", "name": "Fag"}]
+            return {}
+
+        fields_mixin.jira.get = MagicMock(side_effect=mock_get)
+        result = fields_mixin.get_field_screens("customfield_10186")
+        assert len(result) == 1
+        assert result[0]["field_id"] == "customfield_10186"
+        assert result[0]["screens"][0]["screen_id"] == "10288"
+        assert result[0]["screens"][0]["tabs"][0]["tab_name"] == "Field Tab"
+
+    def test_get_field_screens_multi_match(self, fields_mixin: FieldsMixin):
+        """Test get_field_screens returns all matching fields when name is duplicated (e.g. 'Fag')."""
+        fields_mixin.get_fields = MagicMock(
+            return_value=[
+                {"id": "customfield_10186", "name": "Fag"},
+                {"id": "customfield_10199", "name": "Fag"},
+            ]
+        )
+
+        def mock_get(url):
+            if "customfield_10186" in url:
+                return {
+                    "values": [{"id": 10288, "name": "SST - Risk - screen"}],
+                    "total": 1,
+                }
+            if "customfield_10199" in url:
+                return {
+                    "values": [
+                        {"id": 10292, "name": "SST - Risk - screen view and edit"}
+                    ],
+                    "total": 1,
+                }
+            if "/tabs" in url:
+                return [{"id": 1, "name": "Main Tab"}]
+            if "/fields" in url:
+                return []
+            return {}
+
+        fields_mixin.jira.get = MagicMock(side_effect=mock_get)
+        result = fields_mixin.get_field_screens("Fag")
+        assert len(result) == 2
+        field_ids = {r["field_id"] for r in result}
+        assert field_ids == {"customfield_10186", "customfield_10199"}
+
+    def test_get_field_screens_not_found(self, fields_mixin: FieldsMixin):
+        """Test get_field_screens raises clear ValueError when field is missing."""
+        fields_mixin.get_fields = MagicMock(return_value=[])
+        with pytest.raises(ValueError, match="Ikke funnet"):
+            fields_mixin.get_field_screens("nonexistent_field")
+
+    def test_get_field_screens_403(self, fields_mixin: FieldsMixin):
+        """Test get_field_screens raises clear PermissionError on 403."""
+        from requests.exceptions import HTTPError
+        from requests.models import Response
+
+        fields_mixin.get_fields = MagicMock(
+            return_value=[{"id": "customfield_10186", "name": "Fag"}]
+        )
+        mock_resp = Response()
+        mock_resp.status_code = 403
+        fields_mixin.jira.get = MagicMock(
+            side_effect=HTTPError("Forbidden", response=mock_resp)
+        )
+
+        with pytest.raises(PermissionError, match="Ikke tillatt for denne brukeren"):
+            fields_mixin.get_field_screens("customfield_10186")

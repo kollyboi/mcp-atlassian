@@ -2,7 +2,7 @@
 
 import logging
 import re
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import requests
 from requests.exceptions import HTTPError
@@ -22,6 +22,28 @@ logger = logging.getLogger("mcp-jira")
 
 class UsersMixin(JiraClient):
     """Mixin for Jira user operations."""
+
+    def get_myself(self) -> dict[str, Any]:
+        """Return allowlisted identity fields for the authenticated Jira user.
+
+        Returns:
+            Account ID (Cloud), key/name (Server/DC), display name, and active
+            status where present. Email, URLs, and arbitrary fields are omitted.
+
+        Raises:
+            TypeError: If Jira does not return a user object.
+        """
+        response = self.jira.myself()
+        if not isinstance(response, dict):
+            raise TypeError("Jira did not return an authenticated user object.")
+        identity = {
+            key: response[key]
+            for key in ("accountId", "key", "name", "displayName")
+            if isinstance(response.get(key), str)
+        }
+        if isinstance(response.get("active"), bool):
+            identity["active"] = response["active"]
+        return identity
 
     def get_current_user_account_id(self) -> str:
         """
@@ -377,3 +399,77 @@ class UsersMixin(JiraClient):
             raise Exception(
                 f"Error processing user profile for '{identifier}': {str(e)}"
             ) from e
+
+    def get_group_members(
+        self,
+        group_name_or_id: str,
+        max_results: int = 50,
+        start_at: int = 0,
+        include_inactive: bool = False,
+    ) -> dict[str, Any]:
+        """Get members of a Jira group.
+
+        Args:
+            group_name_or_id: The group name (e.g. 'SST - Alle tilganger')
+                or group UUID groupId.
+            max_results: Maximum number of members to return (default 50).
+            start_at: The index of the first member to return (default 0).
+            include_inactive: Whether to include inactive users (default False).
+
+        Returns:
+            Dictionary with group name, pagination info, and member list.
+        """
+        if not group_name_or_id:
+            raise ValueError("Group name or ID is required")
+
+        s_group = group_name_or_id.strip()
+        uuid_pattern = re.compile(
+            r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        )
+        if uuid_pattern.match(s_group):
+            params: dict[str, Any] = {"groupId": s_group}
+        else:
+            params = {"groupname": s_group}
+
+        params["maxResults"] = max_results
+        params["startAt"] = start_at
+        params["includeInactiveUsers"] = str(include_inactive).lower()
+
+        try:
+            response = self.jira.get("rest/api/3/group/member", params=params)
+        except HTTPError as e:
+            if e.response is not None:
+                if e.response.status_code == 403:
+                    raise PermissionError(
+                        "Ikke tillatt for denne brukeren: utlisting av gruppemedlemmer "
+                        "krever administratorrettigheter i Jira."
+                    ) from e
+                if e.response.status_code == 404:
+                    raise ValueError(
+                        f"Ikke funnet: gruppen '{group_name_or_id}' finnes ikke i Jira."
+                    ) from e
+            raise
+
+        if not isinstance(response, dict):
+            raise TypeError(f"Unexpected response type from Jira API: {type(response)}")
+
+        values = response.get("values", [])
+        members = [
+            {
+                "account_id": user.get("accountId"),
+                "display_name": user.get("displayName"),
+                "email_address": user.get("emailAddress"),
+                "active": user.get("active", True),
+            }
+            for user in values
+            if isinstance(user, dict)
+        ]
+
+        return {
+            "group": group_name_or_id,
+            "total": response.get("total", len(members)),
+            "start_at": response.get("startAt", start_at),
+            "max_results": response.get("maxResults", max_results),
+            "is_last": response.get("isLast", True),
+            "members": members,
+        }

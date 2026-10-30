@@ -424,3 +424,109 @@ class TestServerTools:
         data = json.loads(out)
         assert data["success"] is False
         assert "Administer Jira" in data["error"]
+
+
+class TestCheckPermissions:
+    def test_check_permissions_project_success(self, mixin: JiraFetcher):
+        """Test check_permissions with project key."""
+
+        def mock_get(url):
+            if url == "rest/api/3/project/SST":
+                return {"id": "10052", "key": "SST"}
+            return {}
+
+        mixin.jira.get = MagicMock(side_effect=mock_get)
+        mixin.jira.post = MagicMock(
+            return_value={
+                "projectPermissions": [
+                    {
+                        "permission": "TRANSITION_ISSUES",
+                        "projects": [10052],
+                        "issues": [],
+                    },
+                    {
+                        "permission": "ADMINISTER_PROJECTS",
+                        "projects": [],
+                        "issues": [],
+                    },
+                ],
+                "globalPermissions": [],
+            }
+        )
+
+        result = mixin.check_permissions(
+            permissions=["TRANSITION_ISSUES", "ADMINISTER_PROJECTS"],
+            project_key_or_id="SST",
+        )
+        assert result["project"] == "SST"
+        assert result["has_all_permissions"] is False
+        assert result["permissions"]["TRANSITION_ISSUES"] is True
+        assert result["permissions"]["ADMINISTER_PROJECTS"] is False
+        mixin.jira.post.assert_called_once()
+        sent_payload = mixin.jira.post.call_args.kwargs["json"]
+        assert sent_payload["projectPermissions"][0]["projects"] == [10052]
+
+    def test_check_permissions_with_user_email(self, mixin: JiraFetcher):
+        """Test check_permissions resolves user email to accountId."""
+
+        def mock_get(url):
+            if "rest/api/3/project/SST" in url:
+                return {"id": "10052", "key": "SST"}
+            if "rest/api/3/user/search" in url:
+                return [{"accountId": "acc-espen", "displayName": "Espen Viddal"}]
+            return {}
+
+        mixin.jira.get = MagicMock(side_effect=mock_get)
+        mixin.jira.post = MagicMock(
+            return_value={
+                "projectPermissions": [
+                    {
+                        "permission": "TRANSITION_ISSUES",
+                        "projects": [10052],
+                        "issues": [],
+                    }
+                ],
+                "globalPermissions": [],
+            }
+        )
+
+        result = mixin.check_permissions(
+            permissions="TRANSITION_ISSUES",
+            project_key_or_id="SST",
+            account_id="esvi@cowi.com",
+        )
+        assert result["account_id"] == "acc-espen"
+        assert result["has_all_permissions"] is True
+        assert result["permissions"]["TRANSITION_ISSUES"] is True
+
+    def test_check_permissions_403(self, mixin: JiraFetcher):
+        """Test check_permissions raises clear PermissionError on 403."""
+        from requests.exceptions import HTTPError
+        from requests.models import Response
+
+        mock_resp = Response()
+        mock_resp.status_code = 403
+        mixin.jira.post = MagicMock(
+            side_effect=HTTPError("Forbidden", response=mock_resp)
+        )
+
+        with pytest.raises(PermissionError, match="Ikke tillatt for denne brukeren"):
+            mixin.check_permissions(
+                permissions="TRANSITION_ISSUES", account_id="acc-other"
+            )
+
+    def test_check_permissions_404_project(self, mixin: JiraFetcher):
+        """Test check_permissions raises clear ValueError when project not found."""
+        from requests.exceptions import HTTPError
+        from requests.models import Response
+
+        mock_resp = Response()
+        mock_resp.status_code = 404
+        mixin.jira.get = MagicMock(
+            side_effect=HTTPError("Not Found", response=mock_resp)
+        )
+
+        with pytest.raises(ValueError, match="Ikke funnet"):
+            mixin.check_permissions(
+                permissions="TRANSITION_ISSUES", project_key_or_id="NONEXIST"
+            )

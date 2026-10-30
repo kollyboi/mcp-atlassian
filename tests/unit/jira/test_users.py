@@ -625,3 +625,66 @@ class TestUsersMixin:
             Exception, match="Error processing user profile for 'error_user'"
         ):
             users_mixin.get_user_profile_by_identifier("error_user")
+
+    def test_get_group_members_by_name(self, users_mixin):
+        """Test get_group_members with group name."""
+        users_mixin.jira.get = MagicMock(
+            return_value={
+                "total": 1,
+                "startAt": 0,
+                "maxResults": 50,
+                "isLast": True,
+                "values": [
+                    {
+                        "accountId": "acc-espen",
+                        "displayName": "Espen Viddal",
+                        "emailAddress": "esvi@cowi.com",
+                        "active": True,
+                    }
+                ],
+            }
+        )
+        result = users_mixin.get_group_members("SST - Alle tilganger")
+        assert result["group"] == "SST - Alle tilganger"
+        assert result["total"] == 1
+        assert result["members"][0]["display_name"] == "Espen Viddal"
+        users_mixin.jira.get.assert_called_once()
+        params = users_mixin.jira.get.call_args.kwargs["params"]
+        assert params["groupname"] == "SST - Alle tilganger"
+
+    def test_get_group_members_by_uuid(self, users_mixin):
+        """Test get_group_members with groupId UUID."""
+        uuid_group = "8d471cda-193f-47d2-9cdf-04a463e91027"
+        users_mixin.jira.get = MagicMock(
+            return_value={
+                "total": 0,
+                "startAt": 0,
+                "maxResults": 50,
+                "isLast": True,
+                "values": [],
+            }
+        )
+        result = users_mixin.get_group_members(uuid_group)
+        assert result["group"] == uuid_group
+        params = users_mixin.jira.get.call_args.kwargs["params"]
+        assert params["groupId"] == uuid_group
+
+    def test_get_group_members_403(self, users_mixin):
+        """Test get_group_members raises clear PermissionError on 403."""
+        mock_response = MagicMock(spec=requests.Response)
+        mock_response.status_code = 403
+        http_error = requests.exceptions.HTTPError(response=mock_response)
+        users_mixin.jira.get = MagicMock(side_effect=http_error)
+
+        with pytest.raises(PermissionError, match="Ikke tillatt for denne brukeren"):
+            users_mixin.get_group_members("admin-group")
+
+    def test_get_group_members_404(self, users_mixin):
+        """Test get_group_members raises clear ValueError on 404."""
+        mock_response = MagicMock(spec=requests.Response)
+        mock_response.status_code = 404
+        http_error = requests.exceptions.HTTPError(response=mock_response)
+        users_mixin.jira.get = MagicMock(side_effect=http_error)
+
+        with pytest.raises(ValueError, match="Ikke funnet"):
+            users_mixin.get_group_members("missing-group")

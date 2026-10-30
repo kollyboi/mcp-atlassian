@@ -323,21 +323,27 @@ class TestGetOrgUserStatistics:
 
 
 class TestSuspendReactivate:
-    def test_suspend_uses_wildcard_dir(self, mixin):
+    def test_suspend_resolves_primary_dir(self, mixin):
         resp = _mock_response({}, 204)
         with patch.dict(os.environ, CREDS_ENV):
-            with patch("requests.post", return_value=resp) as mock_post:
-                mixin.suspend_org_user("u1")
+            with patch.object(
+                mixin, "get_org_directory_id", return_value="dir-primary"
+            ):
+                with patch("requests.post", return_value=resp) as mock_post:
+                    mixin.suspend_org_user("u1")
         url = mock_post.call_args[0][0]
-        assert "/directories/-/users/u1/suspend" in url
+        assert "/directories/dir-primary/users/u1/suspend" in url
 
-    def test_reactivate_uses_wildcard_dir(self, mixin):
+    def test_reactivate_resolves_primary_dir(self, mixin):
         resp = _mock_response({}, 204)
         with patch.dict(os.environ, CREDS_ENV):
-            with patch("requests.post", return_value=resp) as mock_post:
-                mixin.reactivate_org_user("u1")
+            with patch.object(
+                mixin, "get_org_directory_id", return_value="dir-primary"
+            ):
+                with patch("requests.post", return_value=resp) as mock_post:
+                    mixin.reactivate_org_user("u1")
         url = mock_post.call_args[0][0]
-        assert "/directories/-/users/u1/restore" in url
+        assert "/directories/dir-primary/users/u1/restore" in url
 
     def test_explicit_directory_id(self, mixin):
         resp = _mock_response({}, 204)
@@ -352,17 +358,23 @@ class TestRemoveOrgUser:
     def test_delete_called(self, mixin):
         resp = _mock_response({}, 204)
         with patch.dict(os.environ, CREDS_ENV):
-            with patch("requests.delete", return_value=resp) as mock_del:
-                result = mixin.remove_org_user_from_directory("u1")
+            with patch.object(
+                mixin, "get_org_directory_id", return_value="dir-primary"
+            ):
+                with patch("requests.delete", return_value=resp) as mock_del:
+                    result = mixin.remove_org_user_from_directory("u1")
         assert result is True
         url = mock_del.call_args[0][0]
-        assert "/directories/-/users/u1" in url
+        assert "/directories/dir-primary/users/u1" in url
 
     def test_404_raises(self, mixin):
         with patch.dict(os.environ, CREDS_ENV):
-            with patch("requests.delete", return_value=_mock_response({}, 404)):
-                with pytest.raises(requests.HTTPError):
-                    mixin.remove_org_user_from_directory("ghost")
+            with patch.object(
+                mixin, "get_org_directory_id", return_value="dir-primary"
+            ):
+                with patch("requests.delete", return_value=_mock_response({}, 404)):
+                    with pytest.raises(requests.HTTPError):
+                        mixin.remove_org_user_from_directory("ghost")
 
 
 class TestGetInactiveUsers:

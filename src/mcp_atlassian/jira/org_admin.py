@@ -43,6 +43,8 @@ _WILDCARD_DIR = "-"
 class OrgAdminMixin(JiraClient):
     """Mixin for Atlassian Organization Admin API operations."""
 
+    _cached_org_directory_id: str | None = None
+
     def _get_org_credentials(self) -> tuple[str, str]:
         org_id = os.getenv("JIRA_ORG_ID")
         org_key = os.getenv("JIRA_ORG_KEY") or os.getenv("JIRA_ADMIN_TOKEN")
@@ -64,6 +66,16 @@ class OrgAdminMixin(JiraClient):
     def _dir_id(directory_id: str | None) -> str:
         """Return directory_id or the wildcard '-' that covers all directories."""
         return directory_id or _WILDCARD_DIR
+
+    def _mutation_dir_id(self, directory_id: str | None) -> str:
+        """Return directory_id if explicit and not '-', else resolve primary directory ID.
+
+        Atlassian rejects mutation operations (suspend, restore, delete) with 404
+        when directoryId is '-' (wildcard). Mutations require an actual directory ID.
+        """
+        if directory_id and directory_id != _WILDCARD_DIR:
+            return directory_id
+        return self.get_org_directory_id()
 
     def _paginated_get(
         self,
@@ -90,6 +102,8 @@ class OrgAdminMixin(JiraClient):
 
     def get_org_directory_id(self) -> str:
         """Return the primary directory ID for this organization (v2 directories endpoint)."""
+        if self._cached_org_directory_id:
+            return self._cached_org_directory_id
         org_id, org_key = self._get_org_credentials()
         url = f"{ATLASSIAN_ADMIN_BASE_URL}/admin/v2/orgs/{org_id}/directories"
         response = requests.get(url, headers=self._org_admin_headers(org_key))
@@ -97,7 +111,8 @@ class OrgAdminMixin(JiraClient):
         dirs = response.json().get("data", [])
         if not dirs:
             raise ValueError("No directories found in organization.")
-        return dirs[0]["directoryId"]
+        self._cached_org_directory_id = dirs[0]["directoryId"]
+        return self._cached_org_directory_id
 
     # ------------------------------------------------------------------
     # v2 — accurate status, no productLastAccess
@@ -582,10 +597,10 @@ class OrgAdminMixin(JiraClient):
 
         Args:
             account_id: The Atlassian account ID to suspend.
-            directory_id: Directory to act on. None uses wildcard '-'.
+            directory_id: Directory to act on. None resolves the primary directory.
         """
         org_id, org_key = self._get_org_credentials()
-        dir_id = self._dir_id(directory_id)
+        dir_id = self._mutation_dir_id(directory_id)
         url = (
             f"{ATLASSIAN_ADMIN_BASE_URL}/admin/v2/orgs/{org_id}"
             f"/directories/{dir_id}/users/{account_id}/suspend"
@@ -600,10 +615,10 @@ class OrgAdminMixin(JiraClient):
 
         Args:
             account_id: The Atlassian account ID to restore.
-            directory_id: Directory to act on. None uses wildcard '-'.
+            directory_id: Directory to act on. None resolves the primary directory.
         """
         org_id, org_key = self._get_org_credentials()
-        dir_id = self._dir_id(directory_id)
+        dir_id = self._mutation_dir_id(directory_id)
         url = (
             f"{ATLASSIAN_ADMIN_BASE_URL}/admin/v2/orgs/{org_id}"
             f"/directories/{dir_id}/users/{account_id}/restore"
@@ -623,10 +638,10 @@ class OrgAdminMixin(JiraClient):
 
         Args:
             account_id: The Atlassian account ID to remove.
-            directory_id: Directory to remove them from. None uses wildcard '-'.
+            directory_id: Directory to remove them from. None resolves the primary directory.
         """
         org_id, org_key = self._get_org_credentials()
-        dir_id = self._dir_id(directory_id)
+        dir_id = self._mutation_dir_id(directory_id)
         url = (
             f"{ATLASSIAN_ADMIN_BASE_URL}/admin/v2/orgs/{org_id}"
             f"/directories/{dir_id}/users/{account_id}"

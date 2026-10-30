@@ -19,6 +19,8 @@ import re
 from typing import Any
 from urllib.parse import urlencode
 
+from requests.exceptions import HTTPError
+
 from .client import JiraClient
 from .screens import _require_id
 
@@ -444,4 +446,158 @@ class PermissionsMixin(AdminHelpersMixin):
             "action": "remove_permission_grant",
             "scheme_id": scheme,
             "grant_id": grant,
+        }
+
+    def check_permissions(
+        self,
+        permissions: list[str] | str,
+        project_key_or_id: str | None = None,
+        issue_key_or_id: str | None = None,
+        account_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Check effective permissions for a user or current user against Jira.
+
+        Evaluates active permissions directly via Jira's POST /rest/api/3/permissions/check.
+        Automatically resolves project and issue keys (e.g. 'SST', 'SST-223') to their
+        required numeric IDs, and supports resolving email/username to accountId.
+
+        Args:
+            permissions: List of permission keys (e.g. ['TRANSITION_ISSUES', 'BROWSE_PROJECTS'])
+                or a comma-separated string.
+            project_key_or_id: Optional project key (e.g. 'SST') or numeric project ID.
+            issue_key_or_id: Optional issue key (e.g. 'SST-223') or numeric issue ID.
+            account_id: Optional Atlassian account ID (or email/username) to evaluate.
+                If omitted, evaluates permissions for the currently authenticated user.
+
+        Returns:
+            Dictionary with permission evaluation results:
+            `{"has_all_permissions": bool, "permissions": {<perm>: bool}, "account_id": ..., "project": ...}`
+        """
+        if isinstance(permissions, str):
+            perms = [p.strip() for p in permissions.split(",") if p.strip()]
+        else:
+            perms = list(permissions)
+
+        if not perms:
+            raise ValueError("At least one permission key is required")
+
+        project_id: int | None = None
+        project_ref: str | None = None
+        if project_key_or_id:
+            s_proj = str(project_key_or_id).strip()
+            if s_proj.isdigit():
+                project_id = int(s_proj)
+                project_ref = s_proj
+            else:
+                try:
+                    proj = self.jira.get(f"rest/api/3/project/{s_proj}")
+                    if not isinstance(proj, dict) or "id" not in proj:
+                        raise ValueError(
+                            f"Ikke funnet: prosjekt '{s_proj}' finnes ikke i Jira."
+                        )
+                    project_id = int(proj["id"])
+                    project_ref = proj.get("key", s_proj)
+                except HTTPError as e:
+                    if e.response is not None and e.response.status_code == 404:
+                        raise ValueError(
+                            f"Ikke funnet: prosjekt '{s_proj}' finnes ikke i Jira."
+                        ) from e
+                    raise
+
+        issue_id: int | None = None
+        issue_ref: str | None = None
+        if issue_key_or_id:
+            s_issue = str(issue_key_or_id).strip()
+            if s_issue.isdigit():
+                issue_id = int(s_issue)
+                issue_ref = s_issue
+            else:
+                try:
+                    issue_data = self.jira.get(f"rest/api/3/issue/{s_issue}?fields=id")
+                    if not isinstance(issue_data, dict) or "id" not in issue_data:
+                        raise ValueError(
+                            f"Ikke funnet: saken '{s_issue}' finnes ikke i Jira."
+                        )
+                    issue_id = int(issue_data["id"])
+                    issue_ref = issue_data.get("key", s_issue)
+                except HTTPError as e:
+                    if e.response is not None and e.response.status_code == 404:
+                        raise ValueError(
+                            f"Ikke funnet: saken '{s_issue}' finnes ikke i Jira."
+                        ) from e
+                    raise
+
+        resolved_account_id: str | None = None
+        if account_id:
+            s_acc = account_id.strip()
+            if "@" in s_acc or (":" not in s_acc and not s_acc.isalnum()):
+                try:
+                    users = self.jira.get(f"rest/api/3/user/search?query={s_acc}")
+                    if isinstance(users, list) and users:
+                        resolved_account_id = users[0].get("accountId")
+                    else:
+                        resolved_account_id = s_acc
+                except Exception:
+                    resolved_account_id = s_acc
+            else:
+                resolved_account_id = s_acc
+
+        payload: dict[str, Any] = {
+            "globalPermissions": [],
+            "projectPermissions": [],
+        }
+        if resolved_account_id:
+            payload["accountId"] = resolved_account_id
+
+        if project_id or issue_id:
+            item: dict[str, Any] = {
+                "permissions": perms,
+                "projects": [project_id] if project_id else [],
+                "issues": [issue_id] if issue_id else [],
+            }
+            payload["projectPermissions"].append(item)
+        else:
+            payload["globalPermissions"] = perms
+
+        try:
+            res = self.jira.post("rest/api/3/permissions/check", json=payload)
+        except HTTPError as e:
+            if e.response is not None:
+                if e.response.status_code == 403:
+                    raise PermissionError(
+                        "Ikke tillatt for denne brukeren: evaluering av rettigheter "
+                        "for en annen bruker krever administratorrettigheter i Jira."
+                    ) from e
+                if e.response.status_code == 404:
+                    raise ValueError(
+                        "Ikke funnet: angitt ressurs eller bruker finnes ikke i Jira."
+                    ) from e
+            raise
+
+        if not isinstance(res, dict):
+            raise TypeError(f"Unexpected response type from Jira API: {type(res)}")
+
+        permission_results: dict[str, bool] = dict.fromkeys(perms, False)
+
+        if project_id or issue_id:
+            for item_res in res.get("projectPermissions", []):
+                perm_name = item_res.get("permission")
+                granted = False
+                if project_id and project_id in item_res.get("projects", []):
+                    granted = True
+                if issue_id and issue_id in item_res.get("issues", []):
+                    granted = True
+                if perm_name in permission_results:
+                    permission_results[perm_name] = granted
+        else:
+            granted_globals = set(res.get("globalPermissions", []))
+            for p in perms:
+                permission_results[p] = p in granted_globals
+
+        return {
+            "account_id": resolved_account_id,
+            "project": project_ref,
+            "issue": issue_ref,
+            "has_all_permissions": all(permission_results.values()),
+            "permissions": permission_results,
         }

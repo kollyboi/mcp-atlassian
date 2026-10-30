@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from requests.exceptions import HTTPError
 from thefuzz import fuzz
 
 from .client import JiraClient
@@ -524,3 +525,133 @@ class FieldsMixin(JiraClient, EpicOperationsProto, UsersOperationsProto):
         except Exception as e:
             logger.error(f"Error searching fields: {str(e)}")
             return []
+
+    def get_field_screens(
+        self,
+        field_id_or_name: str,
+        project_keys: list[str] | str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Find which screens, tabs, and projects use a given field.
+
+        If a field name matches multiple fields (e.g. 'Fag' matching both
+        customfield_10186 and customfield_10199), screen information for ALL
+        matching fields is returned so no field is silently ignored.
+
+        Args:
+            field_id_or_name: The field ID (e.g. 'customfield_10186'), numeric ID
+                (e.g. '10186'), or human-readable field name (e.g. 'Fag').
+            project_keys: Optional list of project keys or comma-separated string
+                to check for screen usage.
+
+        Returns:
+            List of dicts per matching field with its screens, tabs, and project usage.
+        """
+        if not field_id_or_name:
+            raise ValueError("Field ID or name is required")
+
+        all_fields = self.get_fields()
+        target = field_id_or_name.strip()
+
+        if target.startswith("customfield_"):
+            matching = [f for f in all_fields if f.get("id") == target]
+        elif target.isdigit():
+            matching = [
+                f for f in all_fields if f.get("id") == f"customfield_{target}"
+            ] or [f for f in all_fields if f.get("id") == target]
+        else:
+            matching = [
+                f
+                for f in all_fields
+                if f.get("id", "").lower() == target.lower()
+                or f.get("name", "").strip().lower() == target.lower()
+            ]
+
+        if not matching:
+            raise ValueError(
+                f"Ikke funnet: feltet '{field_id_or_name}' finnes ikke i Jira."
+            )
+
+        projects: list[str] = []
+        if project_keys:
+            if isinstance(project_keys, str):
+                projects = [p.strip() for p in project_keys.split(",") if p.strip()]
+            else:
+                projects = list(project_keys)
+
+        usage_map: dict[str, Any] = {}
+        if projects and hasattr(self, "get_project_screen_schemes"):
+            try:
+                schemes_result = self.get_project_screen_schemes(  # type: ignore[attr-defined]
+                    projects, include_screens=True
+                )
+                usage_map = schemes_result.get("screen_usage", {})
+            except Exception as e:
+                logger.warning(f"Could not build project screen usage: {e}")
+
+        results: list[dict[str, Any]] = []
+
+        for field in matching:
+            fid = field.get("id")
+            fname = field.get("name")
+            endpoint = f"rest/api/3/field/{fid}/screens"
+
+            try:
+                screens_res = self.jira.get(endpoint)
+            except HTTPError as e:
+                if e.response is not None and e.response.status_code == 404:
+                    raise ValueError(
+                        f"Ikke funnet: feltet '{fid}' finnes ikke i Jira."
+                    ) from e
+                if e.response is not None and e.response.status_code == 403:
+                    raise PermissionError(
+                        f"Ikke tillatt for denne brukeren: mangler tilgang til felt '{fid}'."
+                    ) from e
+                raise
+
+            if not isinstance(screens_res, dict):
+                screens_list = []
+            else:
+                screens_list = screens_res.get("values", [])
+
+            screens_data: list[dict[str, Any]] = []
+            for screen in screens_list:
+                sid = str(screen.get("id"))
+                sname = screen.get("name", "")
+
+                tab_info: list[dict[str, str]] = []
+                try:
+                    tabs = self.jira.get(f"rest/api/3/screens/{sid}/tabs")
+                    if isinstance(tabs, list):
+                        for tab in tabs:
+                            tid = str(tab.get("id"))
+                            tname = tab.get("name", "")
+                            tab_fields = self.jira.get(
+                                f"rest/api/3/screens/{sid}/tabs/{tid}/fields"
+                            )
+                            if isinstance(tab_fields, list) and any(
+                                tf.get("id") == fid for tf in tab_fields
+                            ):
+                                tab_info.append({"tab_id": tid, "tab_name": tname})
+                except Exception as e:
+                    logger.debug(f"Error fetching tabs for screen {sid}: {e}")
+
+                screen_projects = usage_map.get(sid, {}).get("projects", [])
+                screens_data.append(
+                    {
+                        "screen_id": sid,
+                        "screen_name": sname,
+                        "tabs": tab_info,
+                        "projects": screen_projects,
+                    }
+                )
+
+            results.append(
+                {
+                    "field_id": fid,
+                    "field_name": fname,
+                    "total_screens": len(screens_data),
+                    "screens": screens_data,
+                }
+            )
+
+        return results

@@ -91,3 +91,19 @@ git checkout -b fix/issue-description # Bug fix
 git commit --trailer "Reported-by:<name>"      # Attribution
 git commit --trailer "Github-Issue:#<number>"  # Issue reference
 ```
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are tracked locally as markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Uses the default 5 canonical triage roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repository layout (`GLOSSARY.md` and `docs/adr/` at the repo root). See `docs/agents/domain.md`.

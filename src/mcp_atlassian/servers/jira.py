@@ -1931,6 +1931,36 @@ async def batch_create_versions(
 # ---------------------------------------------------------------------------
 
 
+def _format_org_api_error(e: HTTPError) -> str:
+    """Format Atlassian Organization Admin API errors with actionable details."""
+    status_code = e.response.status_code if e.response is not None else None
+    detail: str | None = None
+    if e.response is not None:
+        try:
+            body = e.response.json()
+            if isinstance(body, dict):
+                errors = body.get("errors")
+                if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+                    err0 = errors[0]
+                    detail = err0.get("detail") or err0.get("title") or err0.get("code")
+                if not detail:
+                    detail = body.get("message")
+        except Exception:
+            detail = e.response.text[:200] if e.response.text else None
+
+    if status_code == 401:
+        prefix = (
+            "Atlassian Organization Admin API rejected authentication (401 Unauthorized). "
+            "Verify JIRA_ORG_KEY in .env."
+        )
+        return f"{prefix} Detail: {detail}" if detail else prefix
+    if status_code == 404 and detail:
+        return f"Resource not found (404): {detail}"
+    if detail:
+        return f"API error ({status_code}): {detail}"
+    return f"API error: {e}"
+
+
 @jira_mcp.tool(
     tags={"jira", "read", "admin"},
     annotations={"title": "Get Org User Statistics", "readOnlyHint": True},
@@ -1957,7 +1987,9 @@ async def get_org_user_statistics(ctx: Context) -> str:
     except HTTPError as e:
         logger.error(f"HTTP error in get_org_user_statistics: {e}", exc_info=True)
         return json.dumps(
-            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+            {"success": False, "error": _format_org_api_error(e)},
+            indent=2,
+            ensure_ascii=False,
         )
     except Exception as e:
         logger.error(f"Unexpected error in get_org_user_statistics: {e}", exc_info=True)
@@ -2102,7 +2134,9 @@ async def list_org_users(
     except HTTPError as e:
         logger.error(f"HTTP error in list_org_users: {e}", exc_info=True)
         return json.dumps(
-            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+            {"success": False, "error": _format_org_api_error(e)},
+            indent=2,
+            ensure_ascii=False,
         )
     except Exception as e:
         logger.error(f"Unexpected error in list_org_users: {e}", exc_info=True)
@@ -2206,7 +2240,9 @@ async def count_org_users(
     except HTTPError as e:
         logger.error(f"HTTP error in count_org_users: {e}", exc_info=True)
         return json.dumps(
-            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+            {"success": False, "error": _format_org_api_error(e)},
+            indent=2,
+            ensure_ascii=False,
         )
     except Exception as e:
         logger.error(f"Unexpected error in count_org_users: {e}", exc_info=True)
@@ -2248,7 +2284,9 @@ async def get_org_user_details(
             f"HTTP error fetching user details {account_id}: {e}", exc_info=True
         )
         return json.dumps(
-            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+            {"success": False, "error": _format_org_api_error(e)},
+            indent=2,
+            ensure_ascii=False,
         )
     except Exception as e:
         logger.error(
@@ -2317,7 +2355,9 @@ async def get_org_user_role_assignments(
             f"HTTP error fetching role assignments for {account_id}: {e}", exc_info=True
         )
         return json.dumps(
-            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+            {"success": False, "error": _format_org_api_error(e)},
+            indent=2,
+            ensure_ascii=False,
         )
     except Exception as e:
         logger.error(
@@ -2412,7 +2452,9 @@ async def get_inactive_org_users(
     except HTTPError as e:
         logger.error(f"HTTP error in get_inactive_org_users: {e}", exc_info=True)
         return json.dumps(
-            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+            {"success": False, "error": _format_org_api_error(e)},
+            indent=2,
+            ensure_ascii=False,
         )
     except Exception as e:
         logger.error(f"Unexpected error in get_inactive_org_users: {e}", exc_info=True)
@@ -2456,7 +2498,9 @@ async def suspend_org_user(
     except HTTPError as e:
         logger.error(f"HTTP error suspending user {account_id}: {e}", exc_info=True)
         return json.dumps(
-            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+            {"success": False, "error": _format_org_api_error(e)},
+            indent=2,
+            ensure_ascii=False,
         )
     except Exception as e:
         logger.error(
@@ -2502,7 +2546,9 @@ async def reactivate_org_user(
     except HTTPError as e:
         logger.error(f"HTTP error reactivating user {account_id}: {e}", exc_info=True)
         return json.dumps(
-            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+            {"success": False, "error": _format_org_api_error(e)},
+            indent=2,
+            ensure_ascii=False,
         )
     except Exception as e:
         logger.error(
@@ -2556,7 +2602,9 @@ async def remove_org_user_from_directory(
             f"HTTP error removing user {account_id} from directory: {e}", exc_info=True
         )
         return json.dumps(
-            {"success": False, "error": f"API error: {e}"}, indent=2, ensure_ascii=False
+            {"success": False, "error": _format_org_api_error(e)},
+            indent=2,
+            ensure_ascii=False,
         )
     except Exception as e:
         logger.error(
@@ -3901,6 +3949,158 @@ async def remove_permission_grant(
 
 
 @jira_mcp.tool(
+    tags={"jira", "read", "admin", "projects"},
+    annotations={"title": "Get Project Roles", "readOnlyHint": True},
+)
+async def get_project_roles(
+    ctx: Context,
+    project_key: Annotated[str, Field(description="Jira project key or ID.")],
+) -> str:
+    """Get all project roles and their details for a Jira project."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(roles=jira.get_project_roles(project_key))
+    except Exception as e:
+        return _admin_error("get_project_roles", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "admin", "projects"},
+    annotations={"title": "Get Project Role Actors", "readOnlyHint": True},
+)
+async def get_project_role_actors(
+    ctx: Context,
+    project_key: Annotated[str, Field(description="Jira project key or ID.")],
+    role_id_or_name: Annotated[
+        str,
+        Field(
+            description=(
+                "Numeric role ID (e.g. '10002') or role name (e.g. 'Administrators')."
+            )
+        ),
+    ],
+) -> str:
+    """Get members (users and groups) assigned to a role in a Jira project."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(**jira.get_project_role_actors(project_key, role_id_or_name))
+    except Exception as e:
+        return _admin_error("get_project_role_actors", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin", "projects"},
+    annotations={"title": "Add Project Role Actors", "destructiveHint": True},
+)
+@check_write_access
+async def add_project_role_actors(
+    ctx: Context,
+    project_key: Annotated[str, Field(description="Jira project key or ID.")],
+    role_id_or_name: Annotated[
+        str,
+        Field(
+            description=(
+                "Numeric role ID (e.g. '10002') or role name (e.g. 'Administrators')."
+            )
+        ),
+    ],
+    users: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Optional) Single account ID or comma-separated list of user "
+                "account IDs to add to the role."
+            ),
+            default=None,
+        ),
+    ] = None,
+    groups: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Optional) Single group name/ID or comma-separated list of group "
+                "names or group IDs to add to the role."
+            ),
+            default=None,
+        ),
+    ] = None,
+    dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
+) -> str:
+    """Add actors (users and/or groups) to a project role in a Jira project.
+
+    This operation is idempotent: actors who already have the role are detected
+    and reported under 'already_members' without failing.
+    """
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            **jira.add_project_role_actors(
+                project_key,
+                role_id_or_name,
+                users=users,
+                groups=groups,
+                dry_run=dry_run,
+            )
+        )
+    except Exception as e:
+        return _admin_error("add_project_role_actors", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "write", "admin", "projects"},
+    annotations={"title": "Remove Project Role Actors", "destructiveHint": True},
+)
+@check_write_access
+async def remove_project_role_actors(
+    ctx: Context,
+    project_key: Annotated[str, Field(description="Jira project key or ID.")],
+    role_id_or_name: Annotated[
+        str,
+        Field(
+            description=(
+                "Numeric role ID (e.g. '10002') or role name (e.g. 'Administrators')."
+            )
+        ),
+    ],
+    users: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Optional) Single account ID or comma-separated list of user "
+                "account IDs to remove from the role."
+            ),
+            default=None,
+        ),
+    ] = None,
+    groups: Annotated[
+        str | None,
+        Field(
+            description=(
+                "(Optional) Single group name/ID or comma-separated list of group "
+                "names or group IDs to remove from the role."
+            ),
+            default=None,
+        ),
+    ] = None,
+    dry_run: Annotated[bool, _DRY_RUN_FIELD] = True,
+) -> str:
+    """Remove actors (users and/or groups) from a project role in a Jira project."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        return _admin_ok(
+            **jira.remove_project_role_actors(
+                project_key,
+                role_id_or_name,
+                users=users,
+                groups=groups,
+                dry_run=dry_run,
+            )
+        )
+    except Exception as e:
+        return _admin_error("remove_project_role_actors", e)
+
+
+@jira_mcp.tool(
     tags={"jira", "write", "admin"},
     annotations={"title": "Set Project Issue Security Scheme", "destructiveHint": True},
 )
@@ -4762,6 +4962,88 @@ async def get_dashboard(
 
 
 @jira_mcp.tool(
+    tags={"jira", "write", "admin"},
+    annotations={"title": "Change Dashboard Owner", "destructiveHint": True},
+)
+@check_write_access
+async def change_dashboard_owner(
+    ctx: Context,
+    dashboard_id: Annotated[str, Field(description="Numeric dashboard ID.")],
+    new_owner_account_id: Annotated[
+        str, Field(description="New owner's Atlassian account ID, not email or name.")
+    ],
+    use_admin_permissions: Annotated[
+        bool, Field(description="Explicitly use Administer Jira permissions.")
+    ] = False,
+    autofix_name: Annotated[
+        bool, Field(description="Allow Jira to rename a duplicate dashboard name.")
+    ] = False,
+    expected_owner_account_id: Annotated[
+        str | None,
+        Field(description="Optional preflight owner assertion; not an atomic guard."),
+    ] = None,
+) -> str:
+    """Change a Jira Cloud dashboard owner and verify once.
+
+    Returns:
+        JSON with outcome confirmed/rejected/indeterminate, stable code, observed
+        owner IDs, and changed (true/false/null). A failed verification is not
+        proof no mutation occurred. Never retry blindly. Server/DC is unsupported.
+        Admin permissions and duplicate-name renaming require explicit opt-in;
+        neither flag is enabled automatically.
+    """
+    try:
+        jira = await get_jira_fetcher(ctx)
+    except Exception:
+        return json.dumps(
+            {
+                "success": False,
+                "outcome": "rejected",
+                "changed": False,
+                "code": "client_initialization_failed",
+                "message": "Could not initialize Jira; no ownership write was attempted.",
+                "dashboard_id": dashboard_id,
+                "requested_owner_account_id": new_owner_account_id,
+                "previous_owner_account_id": None,
+                "observed_owner_account_id": None,
+            }
+        )
+    return json.dumps(
+        jira.change_dashboard_owner(
+            dashboard_id,
+            new_owner_account_id,
+            use_admin_permissions=use_admin_permissions,
+            autofix_name=autofix_name,
+            expected_owner_account_id=expected_owner_account_id,
+        ),
+        ensure_ascii=False,
+    )
+
+
+@jira_mcp.tool(
+    tags={"jira", "read"},
+    annotations={"title": "Get Authenticated Jira User", "readOnlyHint": True},
+)
+async def get_myself(ctx: Context) -> str:
+    """Get the authenticated user's identity without email or arbitrary metadata.
+
+    Returns:
+        JSON with allowlisted user identity fields, or a sanitized local error.
+    """
+    try:
+        jira = await get_jira_fetcher(ctx)
+        return _admin_ok(user=jira.get_myself())
+    except Exception:
+        return json.dumps(
+            {
+                "success": False,
+                "code": "identity_read_failed",
+                "error": "Could not read the authenticated Jira identity.",
+            }
+        )
+
+
+@jira_mcp.tool(
     tags={"jira", "read", "admin"},
     annotations={"title": "Get Dashboard Gadgets", "readOnlyHint": True},
 )
@@ -5054,3 +5336,253 @@ async def set_gadget_config(
         )
     except Exception as e:
         return _admin_error("set_gadget_config", e)
+
+
+# ---------------------------------------------------------------------------
+# Dedicated read tools: properties, field screens, permissions, group members
+# ---------------------------------------------------------------------------
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "issues"},
+    annotations={"title": "Get Issue Properties", "readOnlyHint": True},
+)
+async def get_issue_properties(
+    ctx: Context,
+    issue_id_or_key: Annotated[
+        str,
+        Field(description="The issue key (e.g. 'SST-223') or numeric issue ID."),
+    ],
+    property_key: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional property key. If omitted, returns all available property "
+                "keys for the issue. If provided, returns the property value."
+            ),
+            default=None,
+        ),
+    ] = None,
+    max_length: Annotated[
+        int,
+        Field(
+            description="Maximum character length for property values before truncation.",
+            default=15000,
+        ),
+    ] = 15000,
+) -> str:
+    """Get all property keys or a specific property value for a Jira issue."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        data = jira.get_issue_properties(
+            issue_id_or_key, property_key=property_key, max_length=max_length
+        )
+        return _admin_ok(**data)
+    except Exception as e:
+        return _admin_error("get_issue_properties", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "projects"},
+    annotations={"title": "Get Project Properties", "readOnlyHint": True},
+)
+async def get_project_properties(
+    ctx: Context,
+    project_key_or_id: Annotated[
+        str,
+        Field(description="The project key (e.g. 'SST') or numeric project ID."),
+    ],
+    property_key: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional property key. If omitted, returns all available property "
+                "keys for the project. If provided, returns the property value."
+            ),
+            default=None,
+        ),
+    ] = None,
+    max_length: Annotated[
+        int,
+        Field(
+            description="Maximum character length for property values before truncation.",
+            default=15000,
+        ),
+    ] = 15000,
+) -> str:
+    """Get all property keys or a specific property value for a Jira project."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        data = jira.get_project_properties(
+            project_key_or_id, property_key=property_key, max_length=max_length
+        )
+        return _admin_ok(**data)
+    except Exception as e:
+        return _admin_error("get_project_properties", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "fields"},
+    annotations={"title": "Get Field Screens", "readOnlyHint": True},
+)
+async def get_field_screens(
+    ctx: Context,
+    field_id_or_name: Annotated[
+        str,
+        Field(
+            description=(
+                "Field ID (e.g. 'customfield_10186'), numeric suffix ('10186'), "
+                "or field name (e.g. 'Fag'). Returns all matches if name is shared."
+            )
+        ),
+    ],
+    project_keys: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional comma-separated project keys (e.g. 'SST,PROJ') to filter "
+                "and check project usage for the screens."
+            ),
+            default=None,
+        ),
+    ] = None,
+) -> str:
+    """Find screens, tabs, and project usage for a Jira field."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        data = jira.get_field_screens(field_id_or_name, project_keys=project_keys)
+        return _admin_ok(fields=data, total_fields=len(data))
+    except Exception as e:
+        return _admin_error("get_field_screens", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "permissions"},
+    annotations={"title": "Check Permissions", "readOnlyHint": True},
+)
+async def check_permissions(
+    ctx: Context,
+    permissions: Annotated[
+        str,
+        Field(
+            description=(
+                "Comma-separated list of Jira permission keys to check "
+                "(e.g. 'TRANSITION_ISSUES, BROWSE_PROJECTS, ADMINISTER_PROJECTS')."
+            )
+        ),
+    ],
+    project_key_or_id: Annotated[
+        str | None,
+        Field(
+            description="Optional project key (e.g. 'SST') or numeric project ID.",
+            default=None,
+        ),
+    ] = None,
+    issue_key_or_id: Annotated[
+        str | None,
+        Field(
+            description="Optional issue key (e.g. 'SST-223') or numeric issue ID.",
+            default=None,
+        ),
+    ] = None,
+    account_id: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional account ID (or email/username) of the user to evaluate. "
+                "If omitted, checks the currently authenticated user. Note: checking "
+                "another user requires Jira administrator permissions."
+            ),
+            default=None,
+        ),
+    ] = None,
+) -> str:
+    """Check effective permissions for a user or current user against Jira."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        data = jira.check_permissions(
+            permissions=permissions,
+            project_key_or_id=project_key_or_id,
+            issue_key_or_id=issue_key_or_id,
+            account_id=account_id,
+        )
+        return _admin_ok(**data)
+    except Exception as e:
+        return _admin_error("check_permissions", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "users"},
+    annotations={"title": "Get Group Members", "readOnlyHint": True},
+)
+async def get_group_members(
+    ctx: Context,
+    group_name_or_id: Annotated[
+        str,
+        Field(
+            description="Group name (e.g. 'SST - Alle tilganger') or group UUID groupId."
+        ),
+    ],
+    max_results: Annotated[
+        int,
+        Field(
+            description="Maximum number of members to return (default 50).",
+            default=50,
+        ),
+    ] = 50,
+    start_at: Annotated[
+        int,
+        Field(description="Index of first member to return (default 0).", default=0),
+    ] = 0,
+    include_inactive: Annotated[
+        bool,
+        Field(
+            description="Whether to include inactive users (default False).",
+            default=False,
+        ),
+    ] = False,
+) -> str:
+    """Get members of a Jira user group."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        data = jira.get_group_members(
+            group_name_or_id,
+            max_results=max_results,
+            start_at=start_at,
+            include_inactive=include_inactive,
+        )
+        return _admin_ok(**data)
+    except Exception as e:
+        return _admin_error("get_group_members", e)
+
+
+@jira_mcp.tool(
+    tags={"jira", "read", "projects"},
+    annotations={"title": "Get Project Notification Scheme", "readOnlyHint": True},
+)
+async def get_project_notification_scheme(
+    ctx: Context,
+    project_key: Annotated[
+        str,
+        Field(description="The project key (e.g. 'SST')."),
+    ],
+) -> str:
+    """Get the notification scheme configured for a Jira project."""
+    jira = await get_jira_fetcher(ctx)
+    try:
+        data = jira.get_project_notification_scheme(project_key)
+        if data is None:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        f"Ikke funnet: prosjektet '{project_key}' finnes ikke "
+                        "eller har ikke noe notifikasjonsskjema."
+                    ),
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        return _admin_ok(project_key=project_key, notification_scheme=data)
+    except Exception as e:
+        return _admin_error("get_project_notification_scheme", e)

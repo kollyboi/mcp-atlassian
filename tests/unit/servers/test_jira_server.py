@@ -275,10 +275,12 @@ def test_jira_mcp(mock_jira_fetcher, mock_base_jira_config):
     )
     from src.mcp_atlassian.servers.jira import (
         add_comment,
+        add_project_role_actors,
         add_worklog,
         batch_create_issues,
         batch_create_versions,
         batch_get_changelogs,
+        check_permissions,
         create_issue,
         create_issue_link,
         delete_issue,
@@ -286,9 +288,16 @@ def test_jira_mcp(mock_jira_fetcher, mock_base_jira_config):
         get_agile_boards,
         get_all_projects,
         get_board_issues,
+        get_field_screens,
+        get_group_members,
         get_issue,
+        get_issue_properties,
         get_link_types,
         get_project_issues,
+        get_project_notification_scheme,
+        get_project_properties,
+        get_project_role_actors,
+        get_project_roles,
         get_project_versions,
         get_sprint_issues,
         get_sprints_from_board,
@@ -297,6 +306,7 @@ def test_jira_mcp(mock_jira_fetcher, mock_base_jira_config):
         get_worklog,
         link_to_epic,
         remove_issue_link,
+        remove_project_role_actors,
         search,
         search_fields,
         transition_issue,
@@ -333,6 +343,16 @@ def test_jira_mcp(mock_jira_fetcher, mock_base_jira_config):
     jira_sub_mcp.add_tool(transition_issue)
     jira_sub_mcp.add_tool(update_sprint)
     jira_sub_mcp.add_tool(batch_create_versions)
+    jira_sub_mcp.add_tool(get_project_roles)
+    jira_sub_mcp.add_tool(get_project_role_actors)
+    jira_sub_mcp.add_tool(add_project_role_actors)
+    jira_sub_mcp.add_tool(remove_project_role_actors)
+    jira_sub_mcp.add_tool(get_issue_properties)
+    jira_sub_mcp.add_tool(get_project_properties)
+    jira_sub_mcp.add_tool(get_field_screens)
+    jira_sub_mcp.add_tool(check_permissions)
+    jira_sub_mcp.add_tool(get_group_members)
+    jira_sub_mcp.add_tool(get_project_notification_scheme)
     test_mcp.mount(jira_sub_mcp, prefix="jira")
     return test_mcp
 
@@ -1178,3 +1198,236 @@ async def test_batch_create_versions_empty(jira_client, mock_jira_fetcher):
     )
     content = json.loads(response.content[0].text)
     assert content == []
+
+
+@pytest.mark.anyio
+async def test_get_project_roles_tool(jira_client, mock_jira_fetcher):
+    """Test the jira_get_project_roles tool returns roles list."""
+    mock_jira_fetcher.get_project_roles.return_value = [
+        {"id": "10002", "name": "Administrators", "actor_count": 1}
+    ]
+
+    response = await jira_client.call_tool(
+        "jira_get_project_roles",
+        {"project_key": "TEST"},
+    )
+    content = json.loads(response.content[0].text)
+    assert content["success"] is True
+    assert content["roles"][0]["name"] == "Administrators"
+
+
+@pytest.mark.anyio
+async def test_get_project_role_actors_tool(jira_client, mock_jira_fetcher):
+    """Test the jira_get_project_role_actors tool returns role actors."""
+    mock_jira_fetcher.get_project_role_actors.return_value = {
+        "project_key": "TEST",
+        "role_id": "10002",
+        "role_name": "Administrators",
+        "users": [{"account_id": "acc-1", "display_name": "User One"}],
+        "groups": [],
+        "total_actors": 1,
+    }
+
+    response = await jira_client.call_tool(
+        "jira_get_project_role_actors",
+        {"project_key": "TEST", "role_id_or_name": "Administrators"},
+    )
+    content = json.loads(response.content[0].text)
+    assert content["success"] is True
+    assert content["role_name"] == "Administrators"
+    assert content["users"][0]["account_id"] == "acc-1"
+
+
+@pytest.mark.anyio
+async def test_add_project_role_actors_tool(jira_client, mock_jira_fetcher):
+    """Test the jira_add_project_role_actors tool."""
+    mock_jira_fetcher.add_project_role_actors.return_value = {
+        "success": True,
+        "dry_run": True,
+        "action": "add_project_role_actors",
+        "project_key": "TEST",
+        "role_id": "10002",
+        "role_name": "Administrators",
+        "would_add": {"users": ["acc-1"], "groups": []},
+        "already_members": {"users": [], "groups": []},
+    }
+
+    response = await jira_client.call_tool(
+        "jira_add_project_role_actors",
+        {
+            "project_key": "TEST",
+            "role_id_or_name": "Administrators",
+            "users": "acc-1",
+            "dry_run": True,
+        },
+    )
+    content = json.loads(response.content[0].text)
+    assert content["success"] is True
+    assert content["dry_run"] is True
+    assert content["would_add"]["users"] == ["acc-1"]
+
+
+@pytest.mark.anyio
+async def test_remove_project_role_actors_tool(jira_client, mock_jira_fetcher):
+    """Test the jira_remove_project_role_actors tool."""
+    mock_jira_fetcher.remove_project_role_actors.return_value = {
+        "success": True,
+        "dry_run": False,
+        "action": "remove_project_role_actors",
+        "project_key": "TEST",
+        "role_id": "10002",
+        "role_name": "Administrators",
+        "removed": {"users": ["acc-1"], "groups": []},
+        "not_in_role": {"users": [], "groups": []},
+    }
+
+    response = await jira_client.call_tool(
+        "jira_remove_project_role_actors",
+        {
+            "project_key": "TEST",
+            "role_id_or_name": "Administrators",
+            "users": "acc-1",
+            "dry_run": False,
+        },
+    )
+    content = json.loads(response.content[0].text)
+    assert content["success"] is True
+    assert content["dry_run"] is False
+    assert content["removed"]["users"] == ["acc-1"]
+
+
+@pytest.mark.anyio
+async def test_get_issue_properties_tool(jira_client, mock_jira_fetcher):
+    """Test jira_get_issue_properties tool."""
+    mock_jira_fetcher.get_issue_properties.return_value = {
+        "issue": "SST-223",
+        "keys": ["pbrr-assessment", "checklist"],
+        "total_keys": 2,
+    }
+
+    response = await jira_client.call_tool(
+        "jira_get_issue_properties",
+        {"issue_id_or_key": "SST-223"},
+    )
+    content = json.loads(response.content[0].text)
+    assert content["success"] is True
+    assert content["keys"] == ["pbrr-assessment", "checklist"]
+
+
+@pytest.mark.anyio
+async def test_get_project_properties_tool(jira_client, mock_jira_fetcher):
+    """Test jira_get_project_properties tool."""
+    mock_jira_fetcher.get_project_properties.return_value = {
+        "project": "SST",
+        "key": "pbrr-settings",
+        "value": {"issueTypeId": "10062"},
+        "truncated": False,
+    }
+
+    response = await jira_client.call_tool(
+        "jira_get_project_properties",
+        {"project_key_or_id": "SST", "property_key": "pbrr-settings"},
+    )
+    content = json.loads(response.content[0].text)
+    assert content["success"] is True
+    assert content["value"]["issueTypeId"] == "10062"
+
+
+@pytest.mark.anyio
+async def test_get_field_screens_tool(jira_client, mock_jira_fetcher):
+    """Test jira_get_field_screens tool."""
+    mock_jira_fetcher.get_field_screens.return_value = [
+        {
+            "field_id": "customfield_10186",
+            "field_name": "Fag",
+            "total_screens": 1,
+            "screens": [
+                {
+                    "screen_id": "10288",
+                    "screen_name": "SST - Risk - screen",
+                    "tabs": [{"tab_id": "10303", "tab_name": "Field Tab"}],
+                    "projects": ["SST"],
+                }
+            ],
+        }
+    ]
+
+    response = await jira_client.call_tool(
+        "jira_get_field_screens",
+        {"field_id_or_name": "customfield_10186"},
+    )
+    content = json.loads(response.content[0].text)
+    assert content["success"] is True
+    assert content["total_fields"] == 1
+    assert content["fields"][0]["field_id"] == "customfield_10186"
+
+
+@pytest.mark.anyio
+async def test_check_permissions_tool(jira_client, mock_jira_fetcher):
+    """Test jira_check_permissions tool."""
+    mock_jira_fetcher.check_permissions.return_value = {
+        "account_id": "acc-espen",
+        "project": "SST",
+        "issue": None,
+        "has_all_permissions": True,
+        "permissions": {"TRANSITION_ISSUES": True},
+    }
+
+    response = await jira_client.call_tool(
+        "jira_check_permissions",
+        {
+            "permissions": "TRANSITION_ISSUES",
+            "project_key_or_id": "SST",
+            "account_id": "acc-espen",
+        },
+    )
+    content = json.loads(response.content[0].text)
+    assert content["success"] is True
+    assert content["has_all_permissions"] is True
+    assert content["permissions"]["TRANSITION_ISSUES"] is True
+
+
+@pytest.mark.anyio
+async def test_get_group_members_tool(jira_client, mock_jira_fetcher):
+    """Test jira_get_group_members tool."""
+    mock_jira_fetcher.get_group_members.return_value = {
+        "group": "SST - Alle tilganger",
+        "total": 1,
+        "start_at": 0,
+        "max_results": 50,
+        "is_last": True,
+        "members": [
+            {
+                "account_id": "acc-espen",
+                "display_name": "Espen Viddal",
+                "email_address": "esvi@cowi.com",
+                "active": True,
+            }
+        ],
+    }
+
+    response = await jira_client.call_tool(
+        "jira_get_group_members",
+        {"group_name_or_id": "SST - Alle tilganger"},
+    )
+    content = json.loads(response.content[0].text)
+    assert content["success"] is True
+    assert content["total"] == 1
+    assert content["members"][0]["display_name"] == "Espen Viddal"
+
+
+@pytest.mark.anyio
+async def test_get_project_notification_scheme_tool(jira_client, mock_jira_fetcher):
+    """Test jira_get_project_notification_scheme tool."""
+    mock_jira_fetcher.get_project_notification_scheme.return_value = {
+        "id": 10012,
+        "name": "COWI Default Notification Scheme",
+    }
+
+    response = await jira_client.call_tool(
+        "jira_get_project_notification_scheme",
+        {"project_key": "SST"},
+    )
+    content = json.loads(response.content[0].text)
+    assert content["success"] is True
+    assert content["notification_scheme"]["name"] == "COWI Default Notification Scheme"

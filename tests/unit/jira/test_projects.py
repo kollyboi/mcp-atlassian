@@ -298,33 +298,280 @@ def test_get_project_versions_non_list_response(projects_mixin: ProjectsMixin):
     projects_mixin.jira.get_project_versions.assert_called_once_with(key="PROJ1")
 
 
-def test_get_project_roles(
+def test_get_project_roles_fallback(
     projects_mixin: ProjectsMixin, mock_roles: dict[str, dict[str, str]]
 ):
-    """Test get_project_roles method."""
+    """Test get_project_roles method with fallback to raw roles dict."""
+    projects_mixin.jira.get.side_effect = Exception("404 Not Found")
     projects_mixin.jira.get_project_roles.return_value = mock_roles
 
     result = projects_mixin.get_project_roles("PROJ1")
-    assert result == mock_roles
+    assert len(result) == 2
+    assert result[0]["name"] == "Administrator"
+    assert result[0]["id"] == "10000"
+    assert result[1]["name"] == "Developer"
+    assert result[1]["id"] == "10001"
     projects_mixin.jira.get_project_roles.assert_called_once_with(project_key="PROJ1")
+
+
+def test_get_project_roles_roledetails(projects_mixin: ProjectsMixin):
+    """Test get_project_roles using Jira v3 roledetails endpoint."""
+    projects_mixin.jira.get.return_value = [
+        {
+            "id": 10002,
+            "name": "Administrators",
+            "description": "Project admin role",
+            "actors": [
+                {
+                    "id": 100,
+                    "type": "atlassian-user-role-actor",
+                    "displayName": "Alice Admin",
+                    "actorUser": {"accountId": "account-123"},
+                },
+                {
+                    "id": 101,
+                    "type": "atlassian-group-role-actor",
+                    "displayName": "jira-admins",
+                    "actorGroup": {
+                        "name": "jira-admins",
+                        "groupId": "11111111-2222-3333-4444-555555555555",
+                    },
+                },
+            ],
+        }
+    ]
+
+    result = projects_mixin.get_project_roles("PROJ1")
+    assert len(result) == 1
+    role = result[0]
+    assert role["id"] == "10002"
+    assert role["name"] == "Administrators"
+    assert role["description"] == "Project admin role"
+    assert role["actor_count"] == 2
+    assert len(role["actors"]) == 2
+    assert role["actors"][0]["type"] == "user"
+    assert role["actors"][0]["account_id"] == "account-123"
+    assert role["actors"][1]["type"] == "group"
+    assert role["actors"][1]["group_id"] == "11111111-2222-3333-4444-555555555555"
 
 
 def test_get_project_roles_exception(projects_mixin: ProjectsMixin):
     """Test get_project_roles method with exception."""
+    projects_mixin.jira.get.side_effect = Exception("API error")
     projects_mixin.jira.get_project_roles.side_effect = Exception("API error")
 
     result = projects_mixin.get_project_roles("PROJ1")
-    assert result == {}
+    assert result == []
     projects_mixin.jira.get_project_roles.assert_called_once()
 
 
 def test_get_project_roles_non_dict_response(projects_mixin: ProjectsMixin):
-    """Test get_project_roles method with non-dict response."""
+    """Test get_project_roles method with non-dict fallback response."""
+    projects_mixin.jira.get.side_effect = Exception("API error")
     projects_mixin.jira.get_project_roles.return_value = "not a dict"
 
     result = projects_mixin.get_project_roles("PROJ1")
-    assert result == {}
+    assert result == []
     projects_mixin.jira.get_project_roles.assert_called_once()
+
+
+def test_resolve_project_role(projects_mixin: ProjectsMixin):
+    """Test resolve_project_role by ID, name, and not found."""
+    projects_mixin.jira.get.return_value = [
+        {"id": "10002", "name": "Administrators", "actors": []},
+        {"id": "10003", "name": "Developers", "actors": []},
+    ]
+
+    # Resolve by ID
+    by_id = projects_mixin.resolve_project_role("PROJ1", "10002")
+    assert by_id["name"] == "Administrators"
+
+    # Resolve by name (case-insensitive)
+    by_name = projects_mixin.resolve_project_role("PROJ1", "administrators")
+    assert by_name["id"] == "10002"
+
+    # Not found raises ValueError with available roles
+    with pytest.raises(ValueError, match="Administrators \\(10002\\)"):
+        projects_mixin.resolve_project_role("PROJ1", "UnknownRole")
+
+    # Empty raises ValueError
+    with pytest.raises(ValueError, match="must not be empty"):
+        projects_mixin.resolve_project_role("PROJ1", "")
+
+
+def test_get_project_role_actors(projects_mixin: ProjectsMixin):
+    """Test get_project_role_actors formatting of users and groups."""
+    projects_mixin.jira.get.side_effect = [
+        # First call: get_project_roles for resolution
+        [{"id": "10002", "name": "Administrators", "actors": []}],
+        # Second call: get specific role
+        {
+            "id": 10002,
+            "name": "Administrators",
+            "description": "Admin role",
+            "actors": [
+                {
+                    "id": 1,
+                    "type": "atlassian-user-role-actor",
+                    "displayName": "User One",
+                    "actorUser": {"accountId": "acc-1"},
+                },
+                {
+                    "id": 2,
+                    "type": "atlassian-group-role-actor",
+                    "displayName": "grp-team",
+                    "actorGroup": {
+                        "name": "grp-team",
+                        "groupId": "11111111-2222-3333-4444-555555555555",
+                    },
+                },
+            ],
+        },
+    ]
+
+    result = projects_mixin.get_project_role_actors("PROJ1", "Administrators")
+    assert result["project_key"] == "PROJ1"
+    assert result["role_id"] == "10002"
+    assert result["role_name"] == "Administrators"
+    assert result["total_actors"] == 2
+    assert len(result["users"]) == 1
+    assert result["users"][0]["account_id"] == "acc-1"
+    assert len(result["groups"]) == 1
+    assert result["groups"][0]["group_id"] == "11111111-2222-3333-4444-555555555555"
+
+
+def test_add_project_role_actors_dry_run_and_apply(projects_mixin: ProjectsMixin):
+    """Test adding role actors with dry_run and applying changes."""
+    roles_mock = [{"id": "10002", "name": "Administrators", "actors": []}]
+    role_mock = {
+        "id": 10002,
+        "name": "Administrators",
+        "description": "Admin role",
+        "actors": [
+            {
+                "id": 1,
+                "type": "atlassian-user-role-actor",
+                "displayName": "Existing User",
+                "actorUser": {"accountId": "existing-acc"},
+            }
+        ],
+    }
+
+    # 1. Dry run with duplicate and new actors
+    projects_mixin.jira.get.side_effect = [roles_mock, role_mock]
+    preview = projects_mixin.add_project_role_actors(
+        "PROJ1",
+        "10002",
+        users="existing-acc, new-acc",
+        groups="jira-software-users",
+        dry_run=True,
+    )
+    assert preview["dry_run"] is True
+    assert preview["would_add"]["users"] == ["new-acc"]
+    assert preview["would_add"]["groups"] == ["jira-software-users"]
+    assert preview["already_members"]["users"] == ["existing-acc"]
+    assert projects_mixin.jira.post.call_count == 0
+
+    # 2. Apply (dry_run=False)
+    projects_mixin.jira.get.side_effect = [roles_mock, role_mock]
+    result = projects_mixin.add_project_role_actors(
+        "PROJ1",
+        "10002",
+        users="new-acc",
+        groups="11111111-2222-3333-4444-555555555555",
+        dry_run=False,
+    )
+    assert result["dry_run"] is False
+    assert result["added"]["users"] == ["new-acc"]
+    assert result["added"]["groups"] == ["11111111-2222-3333-4444-555555555555"]
+    projects_mixin.jira.post.assert_called_once_with(
+        "rest/api/3/project/PROJ1/role/10002",
+        data={
+            "user": ["new-acc"],
+            "groupId": ["11111111-2222-3333-4444-555555555555"],
+        },
+    )
+
+
+def test_add_project_role_actors_validation(projects_mixin: ProjectsMixin):
+    """Test validation when no users or groups are provided."""
+    projects_mixin.jira.get.return_value = [
+        {"id": "10002", "name": "Administrators", "actors": []}
+    ]
+    with pytest.raises(ValueError, match="At least one user"):
+        projects_mixin.add_project_role_actors("PROJ1", "10002")
+
+
+def test_remove_project_role_actors_dry_run_and_apply(projects_mixin: ProjectsMixin):
+    """Test removing role actors with dry_run and applying deletion."""
+    roles_mock = [{"id": "10002", "name": "Administrators", "actors": []}]
+    role_mock = {
+        "id": 10002,
+        "name": "Administrators",
+        "description": "Admin role",
+        "actors": [
+            {
+                "id": 1,
+                "type": "atlassian-user-role-actor",
+                "displayName": "User One",
+                "actorUser": {"accountId": "acc-to-remove"},
+            },
+            {
+                "id": 2,
+                "type": "atlassian-group-role-actor",
+                "displayName": "group-to-remove",
+                "actorGroup": {
+                    "name": "group-to-remove",
+                    "groupId": "22222222-3333-4444-5555-666666666666",
+                },
+            },
+        ],
+    }
+
+    # 1. Dry run
+    projects_mixin.jira.get.side_effect = [roles_mock, role_mock]
+    preview = projects_mixin.remove_project_role_actors(
+        "PROJ1",
+        "Administrators",
+        users="acc-to-remove, acc-not-there",
+        groups="group-to-remove, group-not-there",
+        dry_run=True,
+    )
+    assert preview["dry_run"] is True
+    assert preview["would_remove"]["users"] == ["acc-to-remove"]
+    assert preview["would_remove"]["groups"] == ["group-to-remove"]
+    assert preview["not_in_role"]["users"] == ["acc-not-there"]
+    assert preview["not_in_role"]["groups"] == ["group-not-there"]
+    assert projects_mixin.jira.delete.call_count == 0
+
+    # 2. Apply (dry_run=False)
+    projects_mixin.jira.get.side_effect = [roles_mock, role_mock]
+    result = projects_mixin.remove_project_role_actors(
+        "PROJ1",
+        "10002",
+        users="acc-to-remove",
+        groups="22222222-3333-4444-5555-666666666666",
+        dry_run=False,
+    )
+    assert result["dry_run"] is False
+    assert result["removed"]["users"] == ["acc-to-remove"]
+    assert result["removed"]["groups"] == ["22222222-3333-4444-5555-666666666666"]
+    assert projects_mixin.jira.delete.call_count == 2
+    projects_mixin.jira.delete.assert_any_call(
+        "rest/api/3/project/PROJ1/role/10002?user=acc-to-remove"
+    )
+    projects_mixin.jira.delete.assert_any_call(
+        "rest/api/3/project/PROJ1/role/10002?groupId=22222222-3333-4444-5555-666666666666"
+    )
+
+
+def test_remove_project_role_actors_validation(projects_mixin: ProjectsMixin):
+    """Test validation when no users or groups are provided for removal."""
+    projects_mixin.jira.get.return_value = [
+        {"id": "10002", "name": "Administrators", "actors": []}
+    ]
+    with pytest.raises(ValueError, match="At least one user"):
+        projects_mixin.remove_project_role_actors("PROJ1", "10002")
 
 
 def test_get_project_role_members(
@@ -767,3 +1014,72 @@ def test_create_project_version_error(projects_mixin: ProjectsMixin) -> None:
     ):
         with pytest.raises(Exception):
             projects_mixin.create_project_version("PROJ4", "v6.0")
+
+
+def test_get_project_properties_list_keys(projects_mixin: ProjectsMixin) -> None:
+    """Test get_project_properties listing keys when property_key is None."""
+    projects_mixin.jira.get.return_value = {
+        "keys": [
+            {"key": "pbrr-settings", "self": "http://example.com/prop1"},
+            {"key": "jira.global.components", "self": "http://example.com/prop2"},
+        ]
+    }
+    result = projects_mixin.get_project_properties("SST")
+    assert result["project"] == "SST"
+    assert result["keys"] == ["pbrr-settings", "jira.global.components"]
+    assert result["total_keys"] == 2
+    projects_mixin.jira.get.assert_called_once_with("rest/api/3/project/SST/properties")
+
+
+def test_get_project_properties_get_value(projects_mixin: ProjectsMixin) -> None:
+    """Test get_project_properties returning value for a key."""
+    projects_mixin.jira.get.return_value = {
+        "key": "pbrr-settings",
+        "value": {"issueTypeId": "10062", "suppRiskTypes": ["10017"]},
+    }
+    result = projects_mixin.get_project_properties("SST", property_key="pbrr-settings")
+    assert result["project"] == "SST"
+    assert result["key"] == "pbrr-settings"
+    assert result["value"] == {"issueTypeId": "10062", "suppRiskTypes": ["10017"]}
+    assert result["truncated"] is False
+
+
+def test_get_project_properties_truncated(projects_mixin: ProjectsMixin) -> None:
+    """Test get_project_properties truncating large value."""
+    projects_mixin.jira.get.return_value = {
+        "key": "large-key",
+        "value": {"data": "x" * 200},
+    }
+    result = projects_mixin.get_project_properties(
+        "SST", property_key="large-key", max_length=50
+    )
+    assert result["truncated"] is True
+    assert "_truncated_preview" in result["value"]
+
+
+def test_get_project_properties_404(projects_mixin: ProjectsMixin) -> None:
+    """Test get_project_properties 404 raises clear ValueError."""
+    from requests.exceptions import HTTPError
+    from requests.models import Response
+
+    mock_resp = Response()
+    mock_resp.status_code = 404
+    error = HTTPError("Not Found", response=mock_resp)
+    projects_mixin.jira.get.side_effect = error
+
+    with pytest.raises(ValueError, match="Ikke funnet"):
+        projects_mixin.get_project_properties("NONEXIST")
+
+
+def test_get_project_properties_403(projects_mixin: ProjectsMixin) -> None:
+    """Test get_project_properties 403 raises clear PermissionError."""
+    from requests.exceptions import HTTPError
+    from requests.models import Response
+
+    mock_resp = Response()
+    mock_resp.status_code = 403
+    error = HTTPError("Forbidden", response=mock_resp)
+    projects_mixin.jira.get.side_effect = error
+
+    with pytest.raises(PermissionError, match="Ikke tillatt for denne brukeren"):
+        projects_mixin.get_project_properties("FORBIDDEN")

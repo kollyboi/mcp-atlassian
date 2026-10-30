@@ -1869,3 +1869,74 @@ class TestIssuesMixin:
         assert isinstance(result, JiraIssue)
         assert result.key == "DEV-123"
         assert result.summary == "Development issue"
+
+    def test_get_issue_properties_list_keys(self, issues_mixin: IssuesMixin):
+        """Test get_issue_properties listing keys when property_key is None."""
+        issues_mixin.jira.get.return_value = {
+            "keys": [
+                {"key": "pbrr-assessment", "self": "http://example.com/prop1"},
+                {"key": "checklist", "self": "http://example.com/prop2"},
+            ]
+        }
+        result = issues_mixin.get_issue_properties("SST-223")
+        assert result["issue"] == "SST-223"
+        assert result["keys"] == ["pbrr-assessment", "checklist"]
+        assert result["total_keys"] == 2
+        issues_mixin.jira.get.assert_called_once_with(
+            "rest/api/3/issue/SST-223/properties"
+        )
+
+    def test_get_issue_properties_get_value(self, issues_mixin: IssuesMixin):
+        """Test get_issue_properties returning value for a key."""
+        issues_mixin.jira.get.return_value = {
+            "key": "pbrr-assessment",
+            "value": {
+                "riskModelId": "6656e2f4a1b48917c6eb885e",
+                "inherent": {"level": {"name": "Middels"}},
+            },
+        }
+        result = issues_mixin.get_issue_properties(
+            "SST-223", property_key="pbrr-assessment"
+        )
+        assert result["issue"] == "SST-223"
+        assert result["key"] == "pbrr-assessment"
+        assert result["value"]["riskModelId"] == "6656e2f4a1b48917c6eb885e"
+        assert result["truncated"] is False
+
+    def test_get_issue_properties_truncated(self, issues_mixin: IssuesMixin):
+        """Test get_issue_properties truncation with max_length."""
+        issues_mixin.jira.get.return_value = {
+            "key": "large-prop",
+            "value": {"items": ["abc"] * 100},
+        }
+        result = issues_mixin.get_issue_properties(
+            "SST-223", property_key="large-prop", max_length=50
+        )
+        assert result["truncated"] is True
+        assert "_truncated_preview" in result["value"]
+
+    def test_get_issue_properties_404(self, issues_mixin: IssuesMixin):
+        """Test get_issue_properties 404 raises clear ValueError."""
+        from requests.exceptions import HTTPError
+        from requests.models import Response
+
+        mock_resp = Response()
+        mock_resp.status_code = 404
+        error = HTTPError("Not Found", response=mock_resp)
+        issues_mixin.jira.get.side_effect = error
+
+        with pytest.raises(ValueError, match="Ikke funnet"):
+            issues_mixin.get_issue_properties("NONEXIST-1")
+
+    def test_get_issue_properties_403(self, issues_mixin: IssuesMixin):
+        """Test get_issue_properties 403 raises clear PermissionError."""
+        from requests.exceptions import HTTPError
+        from requests.models import Response
+
+        mock_resp = Response()
+        mock_resp.status_code = 403
+        error = HTTPError("Forbidden", response=mock_resp)
+        issues_mixin.jira.get.side_effect = error
+
+        with pytest.raises(PermissionError, match="Ikke tillatt for denne brukeren"):
+            issues_mixin.get_issue_properties("FORBIDDEN-1")
